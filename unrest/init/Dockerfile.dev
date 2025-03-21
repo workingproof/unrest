@@ -1,0 +1,17 @@
+FROM ubuntu:latest
+
+RUN apt update -y
+RUN apt install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt update -y
+RUN apt install -y python3.12 python3-pip python3-poetry curl
+
+WORKDIR /host
+
+ADD Unrest Unrest
+
+ADD pyproject.toml pyproject.toml
+ADD poetry.lock poetry.lock
+RUN poetry install --no-root
+
+CMD ["uvicorn", "demo:app", "--host", "0.0.0.0", "--port", "8080", "--reload" ]

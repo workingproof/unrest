@@ -1,0 +1,16 @@
+repos:
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.6.4
+  hooks:
+    - id: ruff
+      args: [ --fix ]
+    - id: ruff-format
+
+# - repo: local
+#   hooks:
+#   -   id: quickstart
+#       name: quickstart
+#       entry: just docs
+#       language: system
+#       files: "tests/quickstart.py"
+

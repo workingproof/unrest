@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="description" content="Page description">
+        <meta property="og:title" content="Unique page title - My Site">
+        <meta property="og:description" content="Page description">
+        <meta property="og:image" content="https://www.mywebsite.com/image.jpg">
+        <meta property="og:image:alt" content="Image description">
+        <meta property="og:locale" content="en_GB">
+        <meta property="og:type" content="website">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta property="og:url" content="https://www.mywebsite.com/page">
+        <link rel="canonical" href="https://www.mywebsite.com/page">
+      
+        <link rel="icon" href="/favicon.ico">
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/daisyui@2.6.0/dist/full.css" rel="stylesheet"/>
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/tailwindcss@1.4.6/dist/base.min.css">
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/tailwindcss@1.4.6/dist/components.min.css">
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/@tailwindcss/typography@0.1.2/dist/typography.min.css">
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/tailwindcss@1.4.6/dist/utilities.min.css">        
+       
+    </head>
+    <body>
+        <div class="wrapper" style="min-width:412px;max-width:412px;min-height:100vh;margin: auto;">
+            <div class="content" style="margin:10px;min-height:80vh; display:flex;flex:1;flex-direction:column;justify-content: space-around;">
+                <div>
+                  {% block content %}
+                  {% if request.user.is_authenticated %}
+        
+                  <div style="margin-top:10px;margin-left:10px;margin-right:10px;">
+                    <form method="POST" action="/add">
+                        <div class="form-control" style="display:flex;flex-direction:row;gap:10px;"> 
+                            <input style="flex-grow:1" type="text" name="description" placeholder="e.g. get the milk" class="input input-bordered w-full" />
+                            <button class="btn">ADD</button>
+                        </div>            
+                    </form>
+                  </div>                  
+
+                  <div class="prose mt-16" style="margin-top:50px;margin-left:10px;margin-right:10px;">
+                  <ol>
+                  {% for todo in todos %}
+                    <li>{{todo.description}} 
+                      <a href="/remove/{{todo.todo_id}}">
+                        <i class="text-sm material-icons">close</i>
+                      </a>
+                    </li>
+                  {% endfor %}
+                  </ol>
+                  </div>
+                  
+
+                  {% else %}
+
+                  <div style="margin-top:10px;margin-left:10px;margin-right:10px;">
+                    <form method="POST" action="/login">
+                        <div class="form-control" style="display:flex;flex-direction:row;gap:10px;"> 
+                            <input style="flex-grow:1" type="text" name="email" placeholder="e.g. foo@example.com" class="input input-bordered w-full" />
+                            <button class="btn">LOGIN</button>
+                        </div>            
+                    </form>
+                  </div>
+
+                  {% endif %}
+                  {% endblock content %}                                
+                </div>
+            </div>
+        </div>        
+    </body>
+</html>

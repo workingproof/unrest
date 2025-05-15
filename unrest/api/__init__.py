@@ -24,7 +24,7 @@ class ApiEndpoint(routing.Endpoint):
                     if user:
                         return user
             except Exception as ex:
-                raise Unauthorized("Invalid credentials")
+                raise Unauthorized("Invalid credentials: %s" % ex)
         return None
 
     async def decode(self, req: http.Request) -> tuple[list, dict]:

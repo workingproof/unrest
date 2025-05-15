@@ -5,7 +5,7 @@ from inspect import iscoroutinefunction
 from typing import Any, Callable
 import uuid
 
-from contexts.auth import User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
+from unrest.contexts.auth import User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
 
 
 # defuser = UnauthenticatedUser("00000000-0000-0000-0000-000000000000", "", {}, {})

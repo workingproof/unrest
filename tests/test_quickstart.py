@@ -10,7 +10,7 @@ from unrest.api import Client, get_instance
 user_headers = {"Authorization": "Bearer secretapikey456"}
 admin_headers = {"Authorization": "Bearer secretapikey123"}
 
-@fixture(scope="function")
+@fixture
 async def client():
     cli = Client(get_instance())
     cli.headers["Authorization"] = user_headers["Authorization"]

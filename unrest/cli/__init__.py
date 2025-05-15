@@ -4,7 +4,7 @@ from pathlib import Path
 
 import asyncclick as click
 
-from contexts import config
+from unrest.contexts import config
 from unrest.db import migrations
 
 

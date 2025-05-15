@@ -4,10 +4,10 @@ from typing import Any, Awaitable, Callable, Self, get_args, get_origin
 
 from asyncpg import InsufficientPrivilegeError # type:ignore
 
-from contexts.auth import User
-from contexts import getLogger, query as _query, mutate as _mutate
-from contexts import Unauthorized, usercontext
-from contexts import getLogger, auth
+from unrest.contexts.auth import User
+from unrest.contexts import getLogger, query as _query, mutate as _mutate
+from unrest.contexts import Unauthorized, usercontext
+from unrest.contexts import getLogger, auth
 
 from unrest import Payload, ContextError, ClientError, ServerError, Unauthorized
 from unrest import http

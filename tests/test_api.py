@@ -90,7 +90,7 @@ async def auth_restriction_not_on_endpoint():
 
 @fixture
 def authenticated_user():
-    from contexts import usercontext
+    from unrest.contexts import usercontext
     with usercontext(auth.AuthenticatedUser("123", "jon", {}, {})):
         yield
 

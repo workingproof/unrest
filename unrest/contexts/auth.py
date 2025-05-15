@@ -99,7 +99,7 @@ class Claim(UserPredicate):
     def __init__(self, name: str) -> None:
         self._name = name
     def __call__(self, user: User) -> bool:
-        from contexts import context
+        from unrest.contexts import context
         return user.is_authenticated and self._name in user._claims and user._claims[self._name] >= context._ctx._local    
     
 

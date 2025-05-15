@@ -9,7 +9,7 @@ from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 
-from contexts import context, config, getLogger
+from unrest.contexts import context, config, getLogger
 
 log = getLogger(__name__)
 

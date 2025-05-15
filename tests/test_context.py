@@ -1,6 +1,6 @@
 from pytest import raises
 from contextlib import contextmanager
-from contexts import context, usercontext, query, mutate, auth, ContextError, config, Unauthorized
+from unrest.contexts import context, usercontext, query, mutate, auth, ContextError, config, Unauthorized
 
 class Roles:
     foo: auth.UserPredicate = auth.Claim("foo")

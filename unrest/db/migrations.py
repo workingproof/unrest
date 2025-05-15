@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import asyncclick as click
 import asyncpg
 
-from contexts import config
+from unrest.contexts import config
 
 
 def role(role):

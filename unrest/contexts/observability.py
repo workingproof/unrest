@@ -26,7 +26,7 @@ def getLogger(name):
 
 class Formatter(JsonFormatter):
     def formatTime(self, record, datefmt=None):
-        from contexts import context
+        from unrest.contexts import context
         ctx = context._ctx
         usr = ctx._user
         record.__dict__.update({

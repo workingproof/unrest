@@ -7,7 +7,7 @@ from asyncpg.connection import Connection as BaseConnection # type:ignore
 
 from .pool import Pool
 from .sql import Fragment, SqlExpression
-from contexts import context, config
+from unrest.contexts import context, config
 
 
 class Connection(BaseConnection):

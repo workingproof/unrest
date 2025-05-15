@@ -1,28 +1,25 @@
 
 set dotenv-load := true
-set dotenv-required := true
-set quiet
+#set dotenv-required := true
+#set quiet
 
 _default:
 	just --list
 
 # Start the test DB
 up:
-	#!/usr/bin/env sh
-	if ! sudo docker-compose ps | grep 'postgres' | grep -q 'Up'; then
-		sudo docker-compose up -d
-	fi
+	sudo docker-compose up -d
 
-# Stop test DB and clean up
-down:
-	#!/usr/bin/env sh
-	if sudo docker-compose ps | grep 'postgres' | grep -q 'Up'; then
-		sudo docker-compose stop
-		sudo docker-compose rm -fv
-	fi
+# Reset the database
+reset:
+	poetry run unrest db reset
+
+# Apply any outstanding migrations
+apply:
+	poetry run unrest db apply
 
 # Run the test suite
-test: up
+test: up reset
 	poetry run pytest
 
 # Generate documentation
@@ -43,14 +40,6 @@ docs *IGNORED:
 
 docserve:
 	poetry run mkdocs serve
-
-# Reset the database
-reset: up
-	poetry run unrest db reset
-
-# Apply any outstanding migrations
-apply: up
-	poetry run unrest db apply
 
 benchmark:
 	#!/bin/sh

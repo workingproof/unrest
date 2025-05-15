@@ -4,8 +4,8 @@ from pathlib import Path
 
 import asyncclick as click
 
-import unrest.config as config
-from unrest import migrations
+from contexts import config
+from unrest.db import migrations
 
 
 @click.group()

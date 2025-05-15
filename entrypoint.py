@@ -1,2 +1,7 @@
-from tests.quickstart import api  # noqa
-from unrest import broker, scheduler  # noqa
+
+import tests.quickstart
+
+#from unrest import broker, scheduler  # noqa
+from unrest import Server
+
+api = Server()

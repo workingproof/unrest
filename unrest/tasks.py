@@ -8,9 +8,8 @@ from taskiq.exceptions import ResultGetError, TaskiqResultTimeoutError
 from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
-from unrest import context
-import unrest.config as config
-from unrest.observability import getLogger
+
+from contexts import context, config, getLogger
 
 log = getLogger(__name__)
 

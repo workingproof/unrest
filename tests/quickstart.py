@@ -23,10 +23,17 @@
 # and then import some typical symbols
 #:python
 
-from unrest import Api, Payload, auth, context, db, getLogger
+from unrest import context, getLogger, query, Unauthorized, Payload
+from unrest import db, api, auth
 
-api = Api()
+
 log = getLogger(__name__)
+
+
+class Roles:
+    admin = auth.Claim("admin")
+    any = auth.UserIsAuthenticated
+
 
 #:end
 #
@@ -80,14 +87,15 @@ def bit_dangerous():
 
 @db.query
 def looks_safe_enough():
-    # This query will not run because it depends on a mutation
+    # NB: This query will not run because it depends on a mutation
     oblivious = bit_dangerous()
     return db.fetch("select * from $1", oblivious)
 
 
 @db.query
 def really_is_dangerous():
-    # NB: annotated as a query...but still will not run
+    # NB: annotated as a query...but still will not run because
+    #     database connection will be readonly
     return db.fetch("delete from users where true returning *")
 
 
@@ -126,19 +134,19 @@ class ExampleRequest(Payload):
 
 @api.query("/test/random")
 async def example_object_response() -> ExampleResponse:
-    query = get_random()
-    return await query()
+    async with get_random() as result:
+        return result
 
 
 @api.query("/test/composed/{n:int}")
 async def example_list_response(req: ExampleRequest, n: int) -> list[ExampleResponse]:
-    query = get_composed(req.domain, n)
-    return await query()
+    async with get_composed(req.domain, n) as results:
+        return results
 
 
 @api.query("/test/doomed")
 async def example_errors_logging_and_context() -> ExampleResponse:
-    with context(foo="bar", baz=123, _dont_log_this="password123"):
+    with context(foo="bar", baz=123, _dont_log_this="password123"): 
         try:
             raise RuntimeError("Oh noes!")
         except Exception as ex:
@@ -148,34 +156,22 @@ async def example_errors_logging_and_context() -> ExampleResponse:
 
 @api.query("/test/safe")
 async def example_enforce_query_context_in_app() -> list[ExampleResponse]:
-    from asyncpg import InsufficientPrivilegeError
-
     try:
-        query = looks_safe_enough()
-        return await query()
-    except InsufficientPrivilegeError:
+        async with looks_safe_enough() as results:
+            return results
+    except Unauthorized:
         log.warning("Phew! Can't accidentally run DB mutations in a query context!")
         raise
 
 
 @api.query("/test/also_safe")
 async def example_enforce_query_context_in_db() -> list[ExampleResponse]:
-    from asyncpg import InsufficientPrivilegeError
-
     try:
-        query = really_is_dangerous()
-        return await query()
-    except InsufficientPrivilegeError:
+        async with really_is_dangerous() as results:
+            return results
+    except Unauthorized:
         log.warning("Phew! Can't accidentally run DB mutations in a query context!")
         raise
-
-
-@api.query("/test/unsafe")
-async def example_unsafe() -> ExampleResponse:
-    with context.unsafe():
-        # We can now perform mutations in a query context!
-        query = db.fetchrow("insert into users (email) values ($1) returning *", "bob@somewhere.com")
-        return await query()
 
 
 #:end
@@ -188,106 +184,104 @@ async def example_unsafe() -> ExampleResponse:
 #:python
 
 
-@auth.scheme("bearer")
-async def authenticate(token: str) -> auth.User:
-    props = await context.db.fetchrow("select id, email as username from users where apikey = $1", token)
+@api.authenticate()
+async def authenticate_with_api_key(token: str) -> auth.User | None:
+    props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        claims = await context.db.fetchrow("select claims from users where id = $1", props["id"])
-        return auth.User(props, claims["claims"])
+        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"])
+    return None
 
 
-@api.query("/test/secret")
-@auth.scope("admin")
+@api.query("/test/secret", Roles.admin) 
 async def example_auth_restriction_on_endpoint() -> ExampleResponse:
-    query = get_random()
-    return await query()
+    async with get_random() as result:
+        return result
 
-
-@api.query("/test/also_secret")
+@api.query("/test/also_secret", Roles.any)
 async def example_auth_restriction_not_on_endpoint():
     return not_an_api_endpoint()
 
 
-@auth.scope("admin")
+@query(Roles.admin)
 def not_an_api_endpoint():
     return {}
 
 
-#:end
-#
-# ### Background tasks
-#
-# **Unrest** makes defining and running backgroundtasks seamless.
-#
-#:python
+# #:end
+# #
+# # ### Background tasks
+# #
+# # **Unrest** makes defining and running backgroundtasks seamless.
+# #
+# #:python
 
-from asyncio import sleep as fake_work  # noqa
+# from asyncio import sleep as fake_work  # noqa
 
-from unrest.tasks import asynchronous, background, result, scheduled, synchronous  # noqa
-
-
-@background()
-async def fire_and_forget() -> None:
-    await fake_work(2)
-    return
+# from unrest.tasks import asynchronous, background, result, scheduled, synchronous  # noqa
 
 
-@scheduled("*/1 * * * *")
-async def runs_every_minute():
-    log.warning("Another minute has passed...")
-    return
+# @background()
+# async def fire_and_forget() -> None:
+#     await fake_work(2)
+#     return
 
 
-@synchronous(timeout=3.0)
-async def blocks_and_returns(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
+# @scheduled("*/1 * * * *")
+# async def runs_every_minute():
+#     log.warning("Another minute has passed...")
+#     return
 
 
-@asynchronous()
-async def returns_immediately(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
+# @synchronous(timeout=3.0)
+# async def blocks_and_returns(secs: int) -> dict:
+#     await fake_work(secs)
+#     return {"ok": True}
 
 
-#:end
-# In the API layer, these can then be used like so
-#:python
+# @asynchronous()
+# async def returns_immediately(secs: int) -> dict:
+#     await fake_work(secs)
+#     return {"ok": True}
 
 
-@api.query("/test/background")
-async def example_background_task():
-    await fire_and_forget()
-    return {"ok": True}
+# #:end
+# # In the API layer, these can then be used like so
+# #:python
 
 
-@api.query("/test/synchronous")
-async def example_synchronous_task():
-    return await blocks_and_returns(1)
+# @api.query("/test/background")
+# async def example_background_task():
+#     await fire_and_forget()
+#     return {"ok": True}
 
 
-@api.query("/test/synchronous/timeout")
-async def example_synchronous_task_timeout():
-    # NB: will run for longer than timeout on task
-    return await blocks_and_returns(10)
+# @api.query("/test/synchronous")
+# async def example_synchronous_task():
+#     return await blocks_and_returns(1)
 
 
-@api.query("/test/asynchronous")
-async def example_asynchronous_task():
-    task_id = await returns_immediately(1)
-    return {"task_id": task_id}
+# @api.query("/test/synchronous/timeout")
+# async def example_synchronous_task_timeout():
+#     # NB: will run for longer than timeout on task
+#     return await blocks_and_returns(10)
 
 
-@api.query("/test/asynchronous/{task_id:str}")
-async def example_asynchronous_task_retrieve(task_id):
-    return await result(task_id)
+# @api.query("/test/asynchronous")
+# async def example_asynchronous_task():
+#     task_id = await returns_immediately(1)
+#     return {"task_id": task_id}
 
 
-#:end
-#
-# ### Conclusion
-#
-# That's pretty much it!
-#
-# I'm sure you *could* do all this yourself. But maybe you should get on with shipping that app? ;-)
-#
+# @api.query("/test/asynchronous/{task_id:str}")
+# async def example_asynchronous_task_retrieve(task_id):
+#     return await result(task_id)
+
+
+# #:end
+# #
+# # ### Conclusion
+# #
+# # That's pretty much it!
+# #
+# # I'm sure you *could* do all this yourself. But maybe you should get on with shipping that app? ;-)
+# #

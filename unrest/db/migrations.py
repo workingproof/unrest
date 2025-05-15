@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import asyncclick as click
 import asyncpg
 
-import unrest.config as config
+from contexts import config
 
 
 def role(role):
@@ -21,10 +21,10 @@ def role(role):
 
 
 def _deets():
-    schema = config.get("UNREST_SCHEMA", "public")
-    admin = role("UNREST_ADMIN_URI")
+    schema = "public" # TODO
+    admin = role("POSTGRES_ADMIN_URI")
     if admin is None:
-        raise RuntimeError("UNREST_ADMIN_URI role is required")
+        raise RuntimeError("POSTGRES_ADMIN_URI role is required")
     return schema, admin
 
 
@@ -41,7 +41,7 @@ async def connection(role) -> AsyncGenerator[asyncpg.connection.Connection, None
 @asynccontextmanager
 async def lock() -> AsyncGenerator[asyncpg.connection.Connection, None]:
     name = 123456
-    async with connection("UNREST_ADMIN_URI") as conn:
+    async with connection("POSTGRES_ADMIN_URI") as conn:
         res = await conn.fetchrow("SELECT pg_try_advisory_lock($1) as lock", name)
         if not res["lock"]:
             raise RuntimeError("Unable to aquire DB lock '%s'" % name)
@@ -60,7 +60,7 @@ async def init():
     Setup the database and admin user
     """
     _, admin = _deets()
-    async with connection("UNREST_SUPER_URI") as db:
+    async with connection("POSTGRES_SUPER_URI") as db:
         try:
             await db.execute("DROP DATABASE IF EXISTS %s" % admin.path[1:])  #  WITH FORCE
             await db.execute("CREATE DATABASE %s" % (admin.path[1:]))  #  OWNER %s
@@ -91,7 +91,7 @@ async def reset():
     """
     schema, admin = _deets()
 
-    async with connection("UNREST_ADMIN_URI") as db:
+    async with connection("POSTGRES_ADMIN_URI") as db:
         # Create empty schema and grant admin control
         tables = await db.fetch("SELECT tablename FROM pg_tables WHERE schemaname = $1", schema)
         if len(tables) == 0:
@@ -142,18 +142,18 @@ async def reset():
         )
 
         # create readonly/readwrite login accounts
-        slave = role("UNREST_QUERY_URI")
+        slave = role("POSTGRES_QUERY_URI")
         if slave is not None:
             if slave.path != admin.path:
-                raise RuntimeError("Misconfigured UNREST_QUERY_URI")
+                raise RuntimeError("Misconfigured POSTGRES_QUERY_URI")
             await db.execute("DROP USER IF EXISTS %s" % slave.username)
             await db.execute("CREATE USER %s WITH INHERIT LOGIN ENCRYPTED PASSWORD '%s'" % (slave.username, slave.password))
             await db.execute("GRANT readonly_access TO %s" % slave.username)
 
-        master = role("UNREST_MUTATE_URI")
+        master = role("POSTGRES_MUTATE_URI")
         if master is not None:
             if master.hostname != admin.hostname or master.path != admin.path:
-                raise RuntimeError("Misconfigured UNREST_MUTATE_URI")
+                raise RuntimeError("Misconfigured POSTGRES_MUTATE_URI")
             await db.execute("DROP USER IF EXISTS %s" % master.username)
             await db.execute("CREATE USER %s WITH INHERIT LOGIN ENCRYPTED PASSWORD '%s'" % (master.username, master.password))
             await db.execute("GRANT readwrite_access TO %s" % master.username)
@@ -178,25 +178,32 @@ async def migrate(execute: bool = False, dryrun: bool = True):
     Apply all (outstanding) migrations
     """
     schema, _ = _deets()
-    migrations_dir = config.get("UNREST_MIGRATIONS_DIR", "sql/migrations")
 
-    def _get_version_from_filename(filename: str):
-        parts = filename.split("__")
-        assert len(parts) == 2
-        return parts[0]
-
-    def _get_title_from_filename(filename: str):
-        parts = filename.split("__")
-        assert len(parts) == 2
-        return parts[1]
+    def find_migrations(migrations_dir=".", current_version: str = None):
+        migrations = []
+        for path, dirnames, filenames in os.walk(migrations_dir):
+            for file in filenames:
+                if file.endswith(".sql"):
+                    match = re.match(r"(\d{12})__(.*?)\.sql", file)
+                    if match:
+                        click.echo("%s...." % file)
+                        migrations.append({
+                            "path": os.path.join(path, file),
+                            "file": file,
+                            "version": match.group(1),
+                            "title": match.group(2),
+                            "applied": None if current_version is None else current_version >= match.group(1)
+                        })
+        migrations.sort(key=lambda x: x["version"])
+        return migrations
 
     async with lock() as db:
         result = await db.fetchrow("SELECT MAX(version) as latest_version FROM %s._migrations" % schema)
         current_version = result["latest_version"]
         click.echo("Last migration applied: %s" % current_version)
-        sorted_migrations = sorted(f for f in os.listdir(migrations_dir) if f.endswith(".sql"))
+        sorted_migrations = find_migrations(current_version=current_version)
         applicable_migrations = (
-            [version for version in sorted_migrations if current_version < _get_version_from_filename(version)]
+            [m for m in sorted_migrations if not m["applied"]]
             if current_version
             else sorted_migrations
         )
@@ -209,21 +216,18 @@ async def migrate(execute: bool = False, dryrun: bool = True):
             try:
                 for i, migration in enumerate(applicable_migrations):
                     try:
-                        path = os.path.join(migrations_dir, migration)
-                        version = _get_version_from_filename(migration)
-                        description = _get_title_from_filename(migration)
-                        with open(path) as f:
+                        with open(migration["path"]) as f:
                             script_contents = f.read()
                             await db.execute(script_contents)
                             await db.execute(
                                 "INSERT INTO %s._migrations (version, description, sql) VALUES ($1, $2, $3)" % schema,
-                                version,
-                                description,
+                                migration["version"],
+                                migration["title"],
                                 script_contents,
                             )
-                            click.echo("Applied %d/%d %s" % (i + 1, applicable, migration))
+                            click.echo("Applied %d/%d %s" % (i + 1, applicable, migration["file"]))
                     except Exception as ex:
-                        click.echo("ERROR %d/%d %s: %s" % (i + 1, applicable, migration, str(ex)))
+                        click.echo("ERROR %d/%d %s: %s" % (i + 1, applicable, migration["file"], str(ex)))
                         raise
 
                 await db.execute("GRANT SELECT ON ALL TABLES IN SCHEMA %s to readonly_access" % schema)
@@ -244,7 +248,7 @@ async def migrate(execute: bool = False, dryrun: bool = True):
 
 @contextmanager
 def create(description):
-    migrations_dir = config.get("UNREST_MIGRATIONS_DIR", "sql/migrations")
+    migrations_dir = "."
     file_creation_time = datetime.utcnow()
     file_title = re.sub(r"\W+", "_", description.lower())
     file_name = "%s__%s.sql" % (file_creation_time.strftime("%Y%m%d%H%M"), file_title)

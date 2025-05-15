@@ -1,0 +1,32 @@
+UNREST
+------------------------------------------------------------
+Running 30s test @ http://localhost:8080/random
+  5 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     6.41ms  451.79us  26.02ms   88.88%
+    Req/Sec   313.75     11.09   360.00     81.47%
+  Latency Distribution
+     50%    6.37ms
+     75%    6.56ms
+     90%    6.78ms
+     99%    7.24ms
+  46876 requests in 30.02s, 8.76MB read
+  Socket errors: connect 0, read 0, write 0, timeout 10
+Requests/sec:   1561.27
+Transfer/sec:    298.84KB
+
+FASTAPI
+------------------------------------------------------------
+Running 30s test @ http://localhost:8081/random
+  5 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    19.95ms    3.04ms  67.54ms   86.96%
+    Req/Sec   100.85      8.60   121.00     64.40%
+  Latency Distribution
+     50%   19.56ms
+     75%   20.80ms
+     90%   22.42ms
+     99%   28.15ms
+  15078 requests in 30.04s, 2.82MB read
+Requests/sec:    501.97
+Transfer/sec:     96.08KB

@@ -41,8 +41,21 @@ docs *IGNORED:
 docserve:
 	poetry run mkdocs serve
 
+get url:
+	curl -v -H"Accept: application/json" -H"Authorization: Bearer secretapikey456" {{url}}
+
 benchmark:
 	#!/bin/sh
-	echo 'wrk.method = "POST"' > /tmp/script.lua
-	wrk -t4 -c200 -d30s -s/tmp/script.lua --latency http://localhost:8080/test/random
+	#echo 'wrk.method = "POST"' > /tmp/script.lua
+	# wrk -t4 -c200 -d30s -s/tmp/script.lua --latency http://localhost:8080/random
+	echo 'wrk.headers["Accept"] = "application/json"' > /tmp/script.lua
+	echo 'wrk.headers["Authorization"] = "Bearer secretapikey456"' >> /tmp/script.lua
+	echo "UNREST"
+	echo "------------------------------------------------------------"
+	wrk -t5 -c10 -d30s -s/tmp/script.lua --latency http://localhost:8080/random
+	echo
+	echo "FASTAPI"
+	echo "------------------------------------------------------------"
+	wrk -t5 -c10 -d30s -s/tmp/script.lua --latency http://localhost:8081/random
+
 

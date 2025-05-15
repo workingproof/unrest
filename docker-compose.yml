@@ -17,7 +17,7 @@ services:
     network_mode: "host"  
     build:
       context: .  
-    command: poetry run unrest db reset
+    command: just reset
     volumes:
       - ".:/host"
     depends_on:
@@ -55,13 +55,26 @@ services:
   #     migration:
   #       condition: service_completed_successfully        
 
-  api:
+  unrest:
     network_mode: "host"  
     build:
       context: .
     volumes:
       - ".:/host"
-    command: poetry run uvicorn entrypoint:server --host "0.0.0.0" --port 8080
+    command: poetry run uvicorn benchmark.unrest.entrypoint:server --host "0.0.0.0" --port 8080
+    depends_on:
+      postgres:
+        condition: service_healthy     
+      migration:
+        condition: service_completed_successfully
+
+  fastapi:
+    network_mode: "host"  
+    build:
+      context: ./benchmark/fastapi
+    volumes:
+      - "./benchmark/fastapi:/host"
+    command: poetry run uvicorn entrypoint:app --host "0.0.0.0" --port 8081
     depends_on:
       postgres:
         condition: service_healthy     

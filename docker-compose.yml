@@ -13,21 +13,21 @@ services:
       timeout: 5s
       retries: 5
 
+  migration:
+    network_mode: "host"  
+    build:
+      context: .  
+    command: poetry run unrest db reset
+    volumes:
+      - ".:/host"
+    depends_on:
+      postgres:
+        condition: service_healthy 
+
+
   # redis:
   #   network_mode: "host"
   #   image: redis
-
-  # migration:
-  #   network_mode: "host"  
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.dev  
-  #   command: poetry run unrest db reset
-  #   volumes:
-  #     - ".:/host"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy 
 
   # scheduler:
   #   network_mode: "host"  
@@ -55,16 +55,15 @@ services:
   #     migration:
   #       condition: service_completed_successfully        
 
-  # api:
-  #   network_mode: "host"  
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.dev
-  #   volumes:
-  #     - ".:/host"
-  #   command: poetry run uvicorn entrypoint:api --host "0.0.0.0" --port 8080
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy     
-  #     migration:
-  #       condition: service_completed_successfully
+  api:
+    network_mode: "host"  
+    build:
+      context: .
+    volumes:
+      - ".:/host"
+    command: poetry run uvicorn entrypoint:server --host "0.0.0.0" --port 8080
+    depends_on:
+      postgres:
+        condition: service_healthy     
+      migration:
+        condition: service_completed_successfully

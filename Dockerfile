@@ -1,10 +1,11 @@
-FROM ubuntu:latest
+FROM python:3.12-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG TZ=Etc/UTC
 
 RUN apt update -y
-RUN apt install -y software-properties-common
-RUN add-apt-repository ppa:deadsnakes/ppa
-RUN apt update -y
-RUN apt install -y python3.12 python3-pip python3-poetry curl
+RUN apt install -y curl
+RUN pip install -q -U pip poetry
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin/
 

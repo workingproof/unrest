@@ -183,7 +183,10 @@ async def example_enforce_query_context_in_app() -> list[ExampleResponse]:
 # Once you have this in place, the next most important contextual information is *"who is trying to perform this read or write operation?"* 
 # and, following immediately, *"are they allowed to do that?"*
 #
-# That is, our logic has a `user` context, distinct from how that may be established and propogated.
+# That is, our logic has a `user` context, distinct from 
+# 
+# 1. the operational context of queries and mutations, and
+# 2. how that user context may be established and propogated.
 #
 # **Unrest** isn't very prescriptive about your user or auth model. It assumes that knowing the user, 
 # their "claims", and the read or write context will all be relevant to a decision. This is sufficient 

@@ -105,10 +105,16 @@ class Claim(UserPredicate):
 
 
 
-def Unrestricted(user: User) -> bool:
-    return True
+class UnrestrictedHelper(UserPredicate):
+    def __call__(self, user: User) -> bool:
+        return True
+Unrestricted = UnrestrictedHelper()
 
-def UserIsAuthenticated(user: User) -> bool:
-    return user.is_authenticated
+
+class UserIsAuthenticatedHelper(UserPredicate):
+    def __call__(self, user: User) -> bool:
+        return user.is_authenticated
+UserIsAuthenticated = UserIsAuthenticatedHelper()
+
 
 

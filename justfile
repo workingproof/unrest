@@ -23,22 +23,21 @@ test: up reset
 	poetry run pytest
 
 # Generate documentation
-docs *IGNORED:
+tutorial:
 	#!/usr/bin/env sh
-	# if [ tests/quickstart.py -nt docs/quickstart.md ] || [ README.tmpl -nt README.md ];
-	if true; then													 
-		awk '!/^#/ { print }									\ 
-			  /^#:end/ { sub(/^#:end/, "```\n", $0); print $0 }	 \
-			  /^#:/  { sub(/^#:/, "\n```", $0); print $$0 }	 \
-			  /^#/ { sub(/^# */, "", $0); print $0 }'		 \
-			  tests/quickstart.py > docs/quickstart.md			
-		cat README.tmpl > README.md							
-		cat docs/quickstart.md >> README.md					 
-		git add docs/quickstart.md							   
-		git add README.md									 
-	fi											
+	# watch -d -t -g ls -l tests/quickstart.py
+	while true; do
+		if [ tests/quickstart.py -nt docs/tutorial.md ]; then 
+			awk '!/^#/ { print }									\
+				/^#:end/ { sub(/^#:end/, "```\n", $0); print $0 }	 \
+				/^#:/  { sub(/^#:/, "\n```", $0); print $$0 }	 \
+				/^#/ { sub(/^# */, "", $0); print $0 }'		 \
+				tests/quickstart.py > docs/tutorial.md										 
+		fi
+		sleep 1
+	done											
 
-docserve:
+docs:
 	poetry run mkdocs serve
 
 get url:

@@ -118,6 +118,8 @@ def mutate(path, perms: auth.UserPredicateFunction = auth.UserIsAuthenticated) -
 def authenticate(scheme="bearer") -> Callable:
     return get_instance().authenticate(scheme)
 
+def abort(status_code) -> JSONResponse:
+    return JSONResponse({}, status_code=status_code)
 
 _services : dict[str, Api] = {}
 def get_instance(name: str = "") -> Api:

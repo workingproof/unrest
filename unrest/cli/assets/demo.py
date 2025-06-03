@@ -25,7 +25,7 @@ def delete_todo(id):
 @auth.scheme("session")
 async def authenticate_via_cookie(token: str):
     try:
-        user = await context.db.fetchrow("select user_id::text, username from users where user_id=$1", token)
+        user = await db._fetchrow("select user_id::text, username from users where user_id=$1", token)
         if user is not None:
             return auth.User(user, claims=["user"])
     except:  # noqa
@@ -34,7 +34,7 @@ async def authenticate_via_cookie(token: str):
 
 @app.post("/login")
 async def login(email: str = None):
-    user = await context.db.fetchrow("select * from users where username=$1", email)
+    user = await db._fetchrow("select * from users where username=$1", email)
     if user is None:
         return app.abort(401)
     headers = {"Set-Cookie": "session=" + str(user["user_id"]) + "; Path=/; HttpOnly"}

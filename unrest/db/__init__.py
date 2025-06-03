@@ -39,20 +39,21 @@ _writers: Pool = None #type:ignore
 def _pool():
     global _readers 
     global _writers
-    if context._ctx._global is False:
-        if _readers is None:
-            slave = config.get("POSTGRES_QUERY_URI")
-            if slave is None:
-                raise RuntimeError("Invalid Postgres DSN configuration")
-            _readers = Pool(dsn=slave, min_size=3, command_timeout=60)
-        return _readers
-    else:
+    if context._ctx._global is True:
         if _writers is None:
             master = config.get("POSTGRES_MUTATE_URI", config.get("POSTGRES_URI"))
             if master is None:
                 raise RuntimeError("Invalid Postgres DSN configuration")
             _writers = Pool(dsn=master, min_size=1, command_timeout=60)
         return _writers
+    else:
+        if _readers is None:
+            slave = config.get("POSTGRES_QUERY_URI")
+            if slave is None:
+                raise RuntimeError("Invalid Postgres DSN configuration")
+            _readers = Pool(dsn=slave, min_size=3, command_timeout=60)
+        return _readers
+
 
 def _decorator(f, is_mutation):
     path = f.__module__ + "." + f.__name__

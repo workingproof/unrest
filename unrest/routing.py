@@ -37,13 +37,16 @@ class Endpoint:
         if not inspect.iscoroutinefunction(func):
             raise RuntimeError("Request handlers must be async coroutines")
 
+        def _is_payload(t):
+            return issubclass(t, Payload) or issubclass(t, dict)
+
         def _get_type(annotation):
             if annotation is not None and annotation != inspect.Parameter.empty:
                 if get_origin(annotation) is list:
                     args = get_args(annotation)
-                    if len(args) == 1 and issubclass(args[0], Payload):
+                    if len(args) == 1 and _is_payload(args[0]):
                         return (args[0], True)
-                if issubclass(annotation, Payload):
+                if _is_payload(annotation):
                     return (annotation, False)
             return None
 

@@ -45,19 +45,6 @@ class UnauthenticatedUser(User):
 
 
 
-AuthFunction = Callable[[str], Awaitable[User]]
-
-schemes : dict[str, AuthFunction] = {}
-
-def scheme(scheme="bearer") -> Callable:
-    def decorator(f: AuthFunction) -> AuthFunction:
-        key = scheme.lower()
-        if key in schemes:
-            raise ValueError(f"Authentication scheme {scheme} already registered")
-        schemes[key] = f
-        return f
-    return decorator
-
 
 
 class UserPredicateFunction(Protocol):

@@ -7,27 +7,29 @@
 # However, to avoid being misled by prior experience with those frameworks,
 # there are a couple of high-level points to appreciate about the design of **Unrest**:
 #
-# 1. **It is solely focussed on rapidly developing high-performance web apps with Postgres.**
+# 1. **It is solely focussed on rapidly developing high-performance web services with Postgres.**
 #    It does this by surrounding your application with a thin layer built on [Starlette](https://www.starlette.io/)
 #    and [Asyncpg](https://magicstack.github.io/asyncpg/current/), sets things up nicely and 
 #    then gets out of the way. Although the framework has some rather nifty features, the abstractions are 
 #    all lightweight. Batteries are *not* included.
 # 2. **It largely eschews REST semantics -- hence the name.** Instead, it is built around the concept of 
-#    `query` and `mutate` [contexts](/contexts) which propogate from API entrypoints, down through your application 
+#     [contexts](/contexts) which propogate from API entrypoints, down through your application 
 #     logic and into the storage layer. The framework sets up these contexts, which your code then interacts with 
 #     rather than directly interacting with the framework.
 #
-# This context-based approach keeps the codebase focussed on business logic. No props drilling, 
-# dependency injection or creating deep dependencies on e.g. HTTP peculiarities.
-#    
-# The explicit distinction between read and write contexts provides a primitive for higher-level functionality: 
-# from role-based access control to scalable database access patterns.
+# This context-based approach keeps the codebase focussed on application layer logic, without props drilling, 
+# dependency injection or deep dependencies on transport layer details.
 #
 # The intention is to maintain productivity but preserve options for if and when priorities change from 
 # hacking velocity to operational stability and scalability.
 #
 #
-# ## Contexts
+# ## Operational context
+#
+# The fundamental context in **Unrest** are `query` and `mutate` operations.
+#
+# The explicit distinction between read and write contexts provides the primitive for higher-level functionality: 
+# from scalable database access patterns to role-based access control.
 #
 # ### State management
 #
@@ -39,9 +41,9 @@
 # * All database access is abstracted behind dedicated functions.
 # * Each function can be annotated as a `query` or `mutate`. Mutations won't (by default) run in a
 #   `query` context. This is enforced by both **Unrest** and Postgres.
-# * Functions do not hit the database directly, but rather return a "Fragment": 
+# * Functions do not hit the database directly, but rather return a query "fragment": 
 #   an `async callable` that will hit the database when invoked.
-# * Fragments can be composed into more complex queries with a very readable CTE.
+# * Due to their delayed execution, fragments can be composed into more complex queries that retain a very readable CTE structure.
 #
 # When getting started, you can mostly treat these annotations as syntactic sugar. 
 # In production, they provide a basic mechanism for safely growing and operating 
@@ -72,8 +74,8 @@ def get_users_by_email_domain(domain: str):
 @db.query
 def get_some_users_by_email_domain(domain: str, n=5):
     # Reuse an existing query rather than duplicate the SQL 
-    # or mess around with SQL string manipulation. Note that
-    # this results in a single CTE query.
+    # or mess around with SQL string manipulation helpers. 
+    # Note, this produces and executes a single CTE query.
     return db.fetch(
         """
         select id, email 
@@ -100,15 +102,15 @@ def this_is_misleading():
 
 @db.query
 def this_is_also_misleading():
-    # NB: annotated as a query...but still will not run because
-    #     the database connection for queries will be readonly
+    # NB: This query will also not run because the database connection 
+    #     is readonly in a query context
     return db.fetch("delete from users where true returning *")
 
 
-async def just_a_function():
-    # NB: Fragments can be directly invoked as context managers
+async def just_a_function() -> str:
+    # NB: Fragments can be directly invoked as a context manager
     async with get_random_user() as result:
-        return result
+        return result["email"]
 
 #:end
 # ### API routing
@@ -116,11 +118,14 @@ async def just_a_function():
 # The highest layer of reads and writes are API endpoints, which largely set the context for all downstream logic.
 #
 # Typical API endpoints are dedicated chunks of functionality: a mess of routing, authorization, (de)serialisation 
-# and validation. All this may be interleaved with business logic or, as is better practice, delegated to a 
+# and validation. All this may be interleaved with business logic or, as is better practice, delegate to a 
 # corresponding layer of pure business logic. 
 #
-# **Unrest** performs all this automatically and exposes key information extracted from the request behind the provided context. 
-# API endpoints are thus largely regular functions, albeit with some annotations, focused more directly on business logic. 
+# **Unrest** API endpoints are **not** HTTP request handlers. Request handling is performed within the framework based on the function annotations in decorators and type signatures. 
+# API endpoints are essentially regular functions and can be invoked as such, without overhead. 
+#
+# This separation of the HTTP request/response pipeline and the application layer entry-point 
+# functionality allows for directly testing and composing API functions.
 #
 #:python
 
@@ -160,43 +165,25 @@ async def example_enforce_query_context_in_app() -> list[ExampleResponse]:
 
 #:end
 #
-# In contrast to existing web frameworks, functions like `example_list_response` are 
-# **not** dedicated HTTP request handlers. They can be invoked directly, and without overhead, 
-# e.g.
+#
+# ## User context
+#
+# Until now we have focussed on partitioning logic into read and write operational contexts. 
 # 
-# ```
-# objs = example_list_response(ExampleRequest(domain="example.com"), 5)
-# ```
-#
-# However, in the context of an HTTP request, **Unrest** will automatically handle routing 
-# of the request based on the annotation and (de)serialisation of the request and response 
-# payloads based on the function signature type annotations. 
-#
-# The separation of the HTTP request/response pipeline and the application layer entry-point 
-# functionality allows for directly testing and composing API functions.
-#
-#
-# ### Users and permissions
-#
-# Until now we have focussed on partitioning logic into read and write contexts. 
-# 
-# Once you have this in place, the next most important contextual information is *"who is trying to perform this read or write operation?"* 
+# With this in place, the next most important contextual information is *"who is trying to perform this operation?"* 
 # and, following immediately, *"are they allowed to do that?"*
 #
-# That is, our logic has a `user` context, distinct from 
-# 
-# 1. the operational context of queries and mutations, and
-# 2. how that user context may be established and propogated.
+# That is, business logic has a `user` context: distinct from the operational context and distinct from how that user context may be established and propogated.
 #
-# **Unrest** isn't very prescriptive about your user or auth model. It assumes that knowing the user, 
-# their "claims", and the read or write context will all be relevant to a decision. This is sufficient 
-# for role-based access control (RBAC) but more complex models can be built on that foundation.
+# **Unrest** isn't overly prescriptive about how you model users or permissions. It assumes that knowing the user's identity, 
+# their opaque "claims", and the operational context will all be relevant to an authorization decision. This is sufficient 
+# for many types of role-based access control (RBAC) but more complex models can be built on this foundation.
 # 
-# It also doesn't limit authorization to API endpoints. Restrictions can be enforced on API endpoints, database queries,
+# Because context is propagated, **Unrest** doesn't limit authorization guards to API endpoints. Restrictions can be enforced on API endpoints, database queries,
 # or pure logic functions deep within your codebase.
 #
 #
-# #### Authentication
+# ### Authentication
 #
 # Authentication is a mapping from an opaque string `token` to a `user`. **Unrest** can pull tokens 
 # from HTTP headers and Cookies and it is simply your job to implement the mapping.
@@ -216,48 +203,73 @@ async def authenticate_with_api_key(token: str) -> auth.User | None:
 
 #:end
 #
-# #### Authorization
+# TODO: Users
 #
-# Authorization is a mapping from a `user` and a `context` to a boolean decision. 
+# ### Authorization
+#
+# Authorization is a mapping from a `user` and `operational` context to a boolean decision. 
 #
 # The 80/20 solution here is a set of "roles" or "claims" that can be assigned to 
 # users and asserted before invoking a function. **Unrest** supports this model out of the box.
 #
 # Assertions are boolean expressions that can be composed using `&`, `|` and `~` operators.
 #
+# For API endpoints, **Unrest** will assert that a user is at least authenticated by default. Public-facing endpoints 
+# must be explicitly marked as such.
+#
 #:python
 
-from unrest import auth, api, query
+from unrest import auth, api, mutate, context
 
 
 class Roles:
     # This isn't necessary but keeps things tidy
-    admin = auth.Claim("admin")
-    anybody = auth.UserIsAuthenticated
+    admin    = auth.Claim("admin")
+    support  = auth.Claim("support")
+    customer = auth.Claim("customer")
+    staff    = auth.Claim("admin") | auth.Claim("support") 
 
-@api.query("/test/secret", Roles.admin & Roles.anybody) 
+@api.query("/test/healthcheck", auth.Unrestricted) 
+async def example_public_endpoint() -> ExampleResponse:
+    return ExampleResponse(id="123", email="foo@example.com")
+
+
+@api.query("/test/secret", Roles.admin) 
 async def example_auth_restriction_on_endpoint() -> ExampleResponse:
     async with get_random_user() as result:
         return result
 
-@api.query("/test/also_secret", Roles.admin | Roles.anybody)
+@api.mutate("/test/also_secret", Roles.staff)
 async def example_auth_restriction_not_on_endpoint():
     return not_an_api_endpoint()
 
 
-@query(Roles.anybody & ~Roles.admin) 
+@mutate(auth.UserIsAuthenticated & ~Roles.support) 
 def not_an_api_endpoint():
-    return {}
+    return {"hello": context.user.display_name}
 
 
 #:end
-# By default, **Unrest** will assert that the user is authenticated on API endpoints. Public-facing endpoints 
-# must be explicitly marked as such.
 #
 #
-# ### User-defined context and logging
+# ## Custom context and logging
+#
+# One of the benefits of tracking context is that it can be recovered for debugging, incident management and usage analytics.
+#
+# **Unrest** provides a logger that emits structured logs enriched with contextual information.
+#
+# Arbitrary custom information can be added to the context in the form of key-value pairs:
+#
+# * This works as a context manager and applies only for the duration of the block
+# * Keys that start with an underscore (`_`) will not be logged
+#
+# For example
 #
 #:python
+
+from unrest import context, getLogger
+
+log = getLogger(__name__)
 
 @api.query("/test/doomed")
 async def example_errors_logging_and_context() -> ExampleResponse:
@@ -270,6 +282,34 @@ async def example_errors_logging_and_context() -> ExampleResponse:
 
 #:end
 #
+# will emit
+#
+# ```json
+#    {
+#      "filename": "quickstart.py",
+#      "lineno": 280,
+#      "message": "Oh noes!",
+#      "exc_info": "Traceback (most recent call last):\n ...",
+#      "taskName": "Task-2",
+#      "context": {
+#        "id": "d23b6634-9d23-4a5b-9a6a-8f99ce3e6b73",
+#        "entrypoint": "tests.quickstart.example_errors_logging_and_context",
+#        "mutation": false,
+#        "properties": {
+#          "foo": "bar",
+#          "baz": 123
+#        }
+#      },
+#      "user": {
+#        "id": "9d521ae6-d088-4070-a28a-c23410643392",
+#        "display_name": "bar@example.com",
+#        "properties": {}
+#      },
+#      "logger": "tests.quickstart",
+#      "timestamp": "2025-06-03T09:45:22.487+00:00",
+#      "loglevel": "ERROR"
+#    }
+# ```
 # ### Background tasks
 #
 # **Unrest** makes defining and running backgroundtasks seamless.

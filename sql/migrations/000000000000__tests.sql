@@ -9,7 +9,7 @@ CREATE TABLE users (
 
 INSERT INTO users (email, claims, apikey) VALUES
     ('foo@example.com', '{"support": false, "developer": false, "admin": true}'::jsonb, 'secretapikey123'),
-    ('bar@example.com', '{"developer": true}'::jsonb, 'secretapikey456'),
+    ('bar@example.com', '{"support": true}'::jsonb, 'secretapikey456'),
     ('abc@example.com', '{"developer": true}'::jsonb, NULL),
     ('def@example.com', '{"support": true}'::jsonb, NULL),
     ('ghi@example.com', '{"support": true}'::jsonb, NULL),

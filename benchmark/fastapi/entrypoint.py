@@ -44,6 +44,6 @@ async def get_static(user: Optional[dict] = Depends(get_user)):
     return ExampleResponse(id="123", email="foo@bar.com")
 
 @app.get("/random", response_model=ExampleResponse)
-def get_random(session: SessionDep, user: Optional[dict] = Depends(get_user)):
+async def get_random(session: SessionDep, user: Optional[dict] = Depends(get_user)):
     return session.exec(select(users).order_by("id").limit(1)).first()
     

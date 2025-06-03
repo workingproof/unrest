@@ -30,7 +30,7 @@ class Formatter(JsonFormatter):
         ctx = context._ctx
         usr = ctx._user
         record.__dict__.update({
-            "context": {"id": ctx._id, "properties": { k: v for (k,v) in ctx._vars.items() if not k.startswith("_")} },
+            "context": {"id": ctx._id, "entrypoint": ctx._entrypoint, "mutation": ctx._global, "properties": { k: v for (k,v) in ctx._vars.items() if not k.startswith("_")} },
             "user": {"id": usr.identity, "display_name": usr.display_name, "properties": usr._props},
         })
         return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(timespec="milliseconds")

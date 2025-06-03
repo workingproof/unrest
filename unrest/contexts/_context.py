@@ -25,6 +25,7 @@ class Context:
         self._id = str(uuid.uuid4())
         self._global: bool = None #type:ignore
         self._local: bool = None #type:ignore
+        self._entrypoint: str = None #type:ignore
         self._user: User = UnauthenticatedUser() if user is None else user
         self._vars: dict[str, Any] = {}
         self._stack = [self._vars]
@@ -57,7 +58,8 @@ def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFuncti
         ctx._local = is_mutation
         _global = ctx._global
         if ctx._global is None:
-            ctx._global = is_mutation        
+            ctx._global = is_mutation
+            ctx._entrypoint = f.__module__ + "." + f.__name__        
         try:
             if not expr(ctx._user):
                raise Unauthorized("User is not authorized: %s" % f.__name__)

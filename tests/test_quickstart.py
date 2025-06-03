@@ -7,13 +7,14 @@ from pytest import fixture
 from tests.quickstart import ExampleRequest, ExampleResponse
 from unrest.api import Client, get_instance
 
-user_headers = {"Authorization": "Bearer secretapikey456"}
-admin_headers = {"Authorization": "Bearer secretapikey123"}
+null_headers = {"Accept": "application/json"}
+staff_headers = {"Authorization": "Bearer secretapikey456", "Accept": "application/json"}
+admin_headers = {"Authorization": "Bearer secretapikey123", "Accept": "application/json"}
 
 @fixture
 async def client():
     cli = Client(get_instance())
-    cli.headers["Authorization"] = user_headers["Authorization"]
+    cli.headers["Authorization"] = staff_headers["Authorization"]
     yield cli
 
 async def test_example_object_response(client: Client):
@@ -40,21 +41,17 @@ async def test_example_logging_and_errors(client: Client):
     assert response.status_code == 500
 
 
+async def test_public_endpoint(client: Client):
+    response = await client.query("/test/healthcheck")
+    assert response.status_code == 401
 
 async def test_example_query_context_in_app(client: Client):
     response = await client.query("/test/safe")
     assert response.status_code == 401
 
 
-
-async def test_example_query_context_in_db(client: Client):
-    response = await client.query("/test/also_safe")
-    assert response.status_code == 401
-
-
-
 async def test_example_auth_restriction_1(client: Client):
-    response = await client.query("/test/secret")
+    response = await client.query("/test/secret", headers=null_headers)
     assert response.status_code == 401
 
     response = await client.query("/test/secret", headers=admin_headers)
@@ -63,13 +60,14 @@ async def test_example_auth_restriction_1(client: Client):
 
 
 async def test_example_auth_restriction_2(client: Client):
-    response = await client.query("/test/also_secret")
+    response = await client.mutate("/test/also_secret", headers=null_headers)
     assert response.status_code == 401
 
-    response = await client.query("/test/also_secret", headers=admin_headers)
+    response = await client.mutate("/test/also_secret", headers=staff_headers)
+    assert response.status_code == 401
+
+    response = await client.mutate("/test/also_secret", headers=admin_headers)
     assert response.status_code == 200
-
-
 
 # async def test_example_background_task(client: Client):
 #     response = await client.query("/test/background")

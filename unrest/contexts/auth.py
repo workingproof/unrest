@@ -29,6 +29,15 @@ class User:
     def get(self, key, default=None):
         return self._props.get(key, default)
 
+    def is_authorized(self, claim: str) -> bool:
+        from unrest import context
+        if not self.is_authenticated:
+            return False
+        if context._ctx._local is not None:
+            return claim in self._claims and self._claims[claim] >= context._ctx._local
+        else:
+            return claim in self._claims 
+
 
 class AuthenticatedUser(User):
     @property

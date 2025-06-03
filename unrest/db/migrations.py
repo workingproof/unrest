@@ -186,14 +186,14 @@ async def migrate(execute: bool = False, dryrun: bool = True):
                 if file.endswith(".sql"):
                     match = re.match(r"(\d{12})__(.*?)\.sql", file)
                     if match:
-                        click.echo("%s...." % file)
-                        migrations.append({
-                            "path": os.path.join(path, file),
-                            "file": file,
-                            "version": match.group(1),
-                            "title": match.group(2),
-                            "applied": None if current_version is None else current_version >= match.group(1)
-                        })
+                        if not "unrest" in path: # FIXME: temp workaround when unrest repo is local
+                            migrations.append({
+                                "path": os.path.join(path, file),
+                                "file": file,
+                                "version": match.group(1),
+                                "title": match.group(2),
+                                "applied": None if current_version is None else current_version >= match.group(1)
+                            })
         migrations.sort(key=lambda x: x["version"])
         return migrations
 
@@ -243,7 +243,7 @@ async def migrate(execute: bool = False, dryrun: bool = True):
 
         else:
             for i, migration in enumerate(applicable_migrations):
-                click.echo("Pending %d/%d %s" % (i + 1, applicable, migration))
+                click.echo("Pending %d/%d %s" % (i + 1, applicable, migration["path"]))
 
 
 @contextmanager

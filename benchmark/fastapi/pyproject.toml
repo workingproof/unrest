@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "fastapibenchmark"
+version = "0.1.0"
+description = ""
+authors = ["Chris <c.h.mcewan@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["standard"], version = "^0.115.12"}
+sqlmodel = "^0.0.24"
+psycopg2 = "^2.9.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

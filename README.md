@@ -1,12 +1,37 @@
 # Unrest
 
-Lean and mean web framework for Python / Postgres
+A lean and mean web framework for Python / Postgres.
 
-## Hello. 
+## Quickstart
 
-Do not use.
+```
+    $ pip install unrest
+```
 
-This library is experimental. Wildly breaking changes are guaranteed. The repo is only public so it can be accessed by `pip`.
+```python
+from unrest import db, api, Server
+from myapp import Widget
 
-That said, if you really have nothing better to do, you can check out the [quickstart](https://github.com/workingproof/unrest/blob/main/docs/quickstart.md) to get a sense of where it is headed.
+@db.query
+def get_random_widget():
+    return db.fetchrow("select * from widgets order by random() limit 1")
 
+
+@api.query("/random")
+async def get_a_random_widget() -> Widget:
+    async with get_random_widget() as result:
+        return result
+
+
+server = Server()
+```
+
+```
+    $ uvicorn app:server --host "0.0.0.0" --port 8080
+```
+
+## Next steps
+
+* [Learn](docs/tutorial.md) what **Unrest** has to offer a more realistic codebase
+
+* [Compare](docs/comparison.md) **Unrest** with **FastAPI** in terms of ergonomics and performance 

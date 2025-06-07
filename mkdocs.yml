@@ -46,7 +46,8 @@ theme:
 
 nav:
 - Unrest: index.md
-- Quick start: quickstart.md
+- Tutorial: tutorial.md
+- Comparison: comparison.md
 # - features.md
 # - Learn:
 #   - learn/index.md

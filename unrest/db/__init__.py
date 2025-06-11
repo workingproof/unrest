@@ -87,6 +87,15 @@ def mutate(f):
     return _decorator(f, True)
 
 
+async def acquire():
+    async with _pool().acquire() as conn:
+        yield conn
+
+async def transaction():
+    async with _pool().acquire() as conn:
+        async with conn.transaction():
+            yield conn
+
 async def _fetch(query: str, *args):
     return await _pool().fetch(query, *args)
 

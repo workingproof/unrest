@@ -3,12 +3,22 @@ from functools import wraps
 from inspect import iscoroutinefunction
 from typing import AsyncGenerator
 
-from asyncpg import Record as BaseRecord # type:ignore
+from asyncpg import Record as BaseRecord, connect as _connect # type:ignore
 from asyncpg.connection import Connection as BaseConnection # type:ignore
 
 from .pool import Pool
 from .sql import Fragment, SqlExpression
 from unrest.contexts import context, config
+
+import json
+
+async def connect(*args, **kwargs):
+    conn = await _connect(*args, **kwargs)
+    return await _setup_connection(conn)
+
+async def _setup_connection(conn: BaseConnection):
+    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
+    return conn
 
 
 class Connection(BaseConnection):

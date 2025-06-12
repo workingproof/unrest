@@ -1,16 +1,13 @@
 import json
 from contextlib import asynccontextmanager
-from asyncpg import create_pool
+from asyncpg import create_pool, connect as _connect
 from asyncpg.connection import Connection
 
-
-async def _setup_connection(conn: Connection):
-    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
-    return conn
 
 
 class Pool:
     def __init__(self, **kwargs):
+        from unrest.db import _setup_connection
         self.pool = None
         self.args = {"init": _setup_connection, "min_size": 3, "command_timeout": 60, **kwargs}
 

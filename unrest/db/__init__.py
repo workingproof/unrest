@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from functools import wraps
 from inspect import iscoroutinefunction
 from typing import AsyncGenerator
@@ -87,10 +88,12 @@ def mutate(f):
     return _decorator(f, True)
 
 
+@asynccontextmanager
 async def acquire():
     async with _pool().acquire() as conn:
         yield conn
 
+@asynccontextmanager
 async def transaction():
     async with _pool().acquire() as conn:
         async with conn.transaction():

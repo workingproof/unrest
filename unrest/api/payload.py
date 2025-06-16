@@ -14,6 +14,11 @@ from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import Response
 
+
+class JsonSerialisable:
+    def serialise(self) -> dict | list | int | float | str | bool | None:
+        raise NotImplementedError("Subclasses must implement this method.")
+
 class Payload(BaseModel):
     pass
 
@@ -46,6 +51,8 @@ class PayloadResponse(Response):
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
+        if isinstance(obj, JsonSerialisable):
+            return obj.serialise()
         if isinstance(obj, UUID):
             return str(obj)
         if isinstance(obj, Record):

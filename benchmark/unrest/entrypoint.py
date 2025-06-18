@@ -1,4 +1,4 @@
-from unrest import db, api, auth, Payload
+from unrest import db, api, auth, Payload, http
 
 @db.query
 def random():
@@ -8,12 +8,12 @@ class ExampleResponse(Payload):
     id: str
     email: str
 
-@api.authenticate("bearer")
-async def authenticate_with_api_key(token: str) -> auth.User | None:
+@api.authentication("bearer")
+async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthResponse:
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"])
-    return None
+        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"]), auth.NullTenant(url)
+    return auth.UnauthenticatedUser(), auth.NullTenant(url)
 
 @api.query("/static")
 async def get_static() -> ExampleResponse:

@@ -190,15 +190,15 @@ async def example_enforce_query_context_in_app() -> list[ExampleResponse]:
 #
 #:python
 
-from unrest import db, api, auth
+from unrest import db, api, auth, http
 
-@api.authenticate("bearer")
-async def authenticate_with_api_key(token: str) -> auth.User | None:
+@api.authentication("bearer")
+async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthResponse:
     # This is a trivial example. Use any method you like.
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"])
-    return None
+        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"]), auth.NullTenant(url)
+    return auth.UnauthenticatedUser(), auth.NullTenant(url)
 
 
 #:end

@@ -1,12 +1,14 @@
 
 from pytest import fixture, raises
 from unrest import context, Payload, getLogger, auth, Unauthorized, query, mutate, ContextError
-from unrest import api, auth
+from unrest import api, auth, http
 
 from unrest import Server
 from unrest.api import Client
 
 import base64
+
+from unrest.contexts.auth import AuthResponse
 
 log = getLogger(__name__)
 
@@ -42,15 +44,15 @@ def an_example_mutation():
 
 
 
-@api.authenticate("basic") 
-async def authenticate_with_basic_auth(token: str) -> auth.User | None:
+@api.authentication("basic")
+async def authenticate_with_basic_auth(token: str, url: http.URL) -> auth.AuthResponse:
     try:
         decoded = base64.b64decode(token).decode("ascii")
         username, password = decoded.split(":")
-        return auth.AuthenticatedUser("", username, {}, {})
+        return auth.AuthenticatedUser("", username, {}, {}), auth.NullTenant(url)
     except Exception as exc:
         log.warning('Invalid basic auth credentials')
-    return None
+    return auth.UnauthenticatedUser(), auth.NullTenant(url)
 
 
 @api.query("/object/{object_id}")

@@ -1,15 +1,45 @@
 from functools import wraps
 from inspect import iscoroutinefunction
-from typing import Any, Awaitable, Callable, Mapping, Protocol
+from typing import Any, Awaitable, Callable, Mapping, Protocol, Tuple
+import uuid
 
+from unrest import http
+
+null_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+class Tenant:
+    def __init__(self, id: str, display_name: str, props: Mapping[str, Any] = {}) -> None:
+        self._id = id
+        self._display_name = display_name
+        self._props = dict(props)
+
+    @property
+    def display_name(self) -> str:
+        return self._display_name
+
+    @property
+    def identity(self) -> str:
+        return self._id
+
+    def __getitem__(self, key):
+        return self._props[key]
+
+    def get(self, key, default=None):
+        return self._props.get(key, default)
+
+
+class NullTenant(Tenant):
+    def __init__(self, url: http.URL) -> None:
+        super().__init__(null_uuid, url.hostname or "", {})
 
 
 class User:
-    def __init__(self, id: str, display_name: str, props: Mapping[str, Any], claims: Mapping[str, bool]) -> None:
+    def __init__(self, id: str, display_name: str, props: Mapping[str, Any], claims: Mapping[str, bool], tenant:str=null_uuid) -> None:
         self._id = id
         self._display_name = display_name
         self._claims = dict(claims)
         self._props = dict(props)
+        self._tenant = tenant
 
     @property
     def is_authenticated(self) -> bool:
@@ -22,7 +52,12 @@ class User:
     @property
     def identity(self) -> str:
         return self._id
-    
+
+    @property
+    def tenant(self) -> str:
+        return self._tenant
+
+
     def __getitem__(self, key):
         return self._props[key]
 
@@ -45,8 +80,8 @@ class AuthenticatedUser(User):
         return True
     
 class UnauthenticatedUser(User):
-    def __init__(self, id: str = "", display_name: str = "", props: Mapping[str, Any] = {}, claims: Mapping[str, bool] = {}) -> None:
-        super().__init__(id, display_name, props, claims)
+    def __init__(self, id: str = null_uuid, display_name: str = "", props: Mapping[str, Any] = {}, claims: Mapping[str, bool] = {}, tenant: str = null_uuid) -> None:
+        super().__init__(id, display_name, props, claims, tenant=tenant)
 
     @property
     def is_authenticated(self) -> bool:
@@ -114,3 +149,8 @@ UserIsAuthenticated = UserIsAuthenticatedHelper()
 
 
 
+AuthResponse = Tuple[User, Tenant]
+AuthFunction = Callable[[http.Request], Awaitable[AuthResponse]]
+
+TokenAuthFunction = Callable[[str|None, http.URL], Awaitable[AuthResponse]]
+CookieAuthFunction = Callable[[str|None, http.URL], Awaitable[AuthResponse]]

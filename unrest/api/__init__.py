@@ -1,11 +1,14 @@
 
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from unrest import getLogger, query as _query, mutate as _mutate, Unauthorized
 from unrest import auth, http, routing
+from unrest.contexts.auth import TokenAuthFunction
 
 from .payload import JSONResponse, PayloadResponse
 from .client import Client
+
+
 
 
 
@@ -13,20 +16,6 @@ log = getLogger(__name__)
 
 
 class ApiEndpoint(routing.Endpoint):
-    async def authenticate(self, request: http.Request) -> auth.User | None:
-        if "Authorization" in request.headers:
-            try:
-                header = request.headers["Authorization"]
-                scheme, credentials = header.split()
-                handler = get_instance()._schemes.get(scheme.lower())
-                if handler:
-                    user = await handler(credentials) 
-                    if user:
-                        return user
-            except Exception as ex:
-                raise Unauthorized("Invalid credentials: %s" % ex)
-        return None
-
     async def decode(self, req: http.Request) -> tuple[list, dict]:
         args : list[Any | None] = []
         kwargs = {}
@@ -85,11 +74,27 @@ class ApiEndpoint(routing.Endpoint):
 
 
 class Api(routing.Service):
+    def authentication(self, scheme="bearer") -> Callable:
+        def decorator(f: TokenAuthFunction) -> TokenAuthFunction:
+            async def _authenticate(request: http.Request) -> routing.AuthResponse:
+                if "Authorization" in request.headers:
+                    try:
+                        header = request.headers["Authorization"]
+                        _scheme, credentials = header.split()
+                        if scheme.lower() == _scheme.lower():
+                            return await f(credentials, request.base_url) 
+                    except Exception as ex:
+                        raise Unauthorized("Invalid credentials: %s" % ex)
+                return await f(None, request.base_url)
+            self._authfunction = _authenticate
+            return f
+        return decorator
+        
     def query(self, path, perms: auth.UserPredicateFunction = auth.UserIsAuthenticated) -> Callable:
         def decorator(f: Callable) -> Callable:
             name = f.__module__ + "." + f.__name__
             qry  = _query(perms)(f)
-            point = ApiEndpoint(qry)
+            point = ApiEndpoint(qry, self)
             async def wrapper(*args, **kwargs):
                 return await point(*args, **kwargs)
             self.add(http.Route(path, wrapper, methods=["GET", "QUERY"], name=name))
@@ -100,7 +105,7 @@ class Api(routing.Service):
         def decorator(f: Callable) -> Callable:
             name = f.__module__ + "." + f.__name__ 
             qry = _mutate(perms)(f)
-            point = ApiEndpoint(qry)
+            point = ApiEndpoint(qry, self)
             async def wrapper(*args, **kwargs):
                 return await point(*args, **kwargs)
             self.add(http.Route(path, wrapper, methods=["POST"], name=name))
@@ -115,8 +120,8 @@ def query(path, perms: auth.UserPredicateFunction = auth.UserIsAuthenticated) ->
 def mutate(path, perms: auth.UserPredicateFunction = auth.UserIsAuthenticated) -> Callable:
     return get_instance().mutate(path, perms)
 
-def authenticate(scheme="bearer") -> Callable:
-    return get_instance().authenticate(scheme)
+def authentication(scheme="bearer") -> Callable:
+    return get_instance().authentication(scheme)
 
 def abort(status_code) -> JSONResponse:
     return JSONResponse({}, status_code=status_code)

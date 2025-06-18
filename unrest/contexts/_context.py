@@ -5,7 +5,7 @@ from inspect import iscoroutinefunction
 from typing import Any, Callable
 import uuid
 
-from unrest.contexts.auth import User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
+from unrest.contexts.auth import Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
 
 
 # defuser = UnauthenticatedUser("00000000-0000-0000-0000-000000000000", "", {}, {})
@@ -21,12 +21,13 @@ class Unauthenticated(ContextError):
 
 
 class Context:
-    def __init__(self, user: User | None = None) -> None:
+    def __init__(self, user: User | None = None, tenant: Tenant | None = None) -> None:
         self._id = str(uuid.uuid4())
         self._global: bool = None #type:ignore
         self._local: bool = None #type:ignore
         self._entrypoint: str = None #type:ignore
         self._user: User = UnauthenticatedUser() if user is None else user
+        self._tenant: Tenant | None = tenant
         self._vars: dict[str, Any] = {}
         self._stack = [self._vars]
 
@@ -79,8 +80,8 @@ def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFuncti
 
 
 @contextmanager
-def usercontext(user : User):
-    token = __ctx.set(Context(user))
+def usercontext(user : User, tenant: Tenant = None):
+    token = __ctx.set(Context(user, tenant=tenant))
     try:
         yield
     finally:
@@ -126,6 +127,10 @@ class ContextWrapper:
     @property
     def user(self):
         return self._ctx._user
+
+    @property
+    def tenant(self):
+        return self._ctx._tenant
 
     # @contextmanager
     # def unsafe(self):

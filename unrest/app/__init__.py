@@ -1,5 +1,6 @@
-from typing import Any, Callable, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
+from unrest.contexts.auth import CookieAuthFunction
 from unrest.http import Request, Response, HTMLResponse, RedirectResponse, Route, UploadFile
 from unrest import context, getLogger, Unauthorized, query as _query, mutate as _mutate
 from unrest import routing, auth
@@ -7,20 +8,8 @@ from unrest import routing, auth
 log = getLogger(__name__)
 
 
-class ApplicationEndpoint(routing.Endpoint):
-    async def authenticate(self, request: Request) -> auth.User | None:
-        if len(request.cookies) > 0:
-            for key, val in request.cookies.items():
-                handler = get_instance()._schemes.get(key.lower())
-                if handler:
-                    try:
-                        user = await handler(val)
-                        if user:
-                            return user
-                    except Exception:
-                        raise Unauthorized("Invalid credentials")
-        return None
 
+class ApplicationEndpoint(routing.Endpoint):
     async def decode(self, req: Request) -> tuple[list, dict]:
         args: list[Any|None] = []
         kwargs = {}
@@ -66,12 +55,27 @@ class ApplicationEndpoint(routing.Endpoint):
         raise ValueError("Invalid response type")
 
 
-class App(routing.Service):
+class App(routing.Service):      
+    def authentication(self, cookie="session") -> Callable:
+        def decorator(f: CookieAuthFunction) -> CookieAuthFunction:
+            async def _authenticate(request: Request) -> routing.AuthResponse:
+                if len(request.cookies) > 0:
+                    for key, val in request.cookies.items():
+                        if key.lower() == cookie.lower():
+                            try:
+                                return await f(val, request.base_url)
+                            except Exception:
+                                raise Unauthorized("Invalid credentials")
+                return await f(None, request.base_url)
+            self._authfunction = _authenticate
+            return f
+        return decorator    
+
     def get(self, path, perms: auth.UserPredicateFunction = auth.UserIsAuthenticated) -> Callable:
         def decorator(f: Callable) -> Callable:
             name = f.__module__ + "." + f.__name__
             q = _query(perms)(f)
-            self.add(Route(path, ApplicationEndpoint(q), methods=["GET"], name=name)) 
+            self.add(Route(path, ApplicationEndpoint(q, self), methods=["GET"], name=name)) 
             return q
         return decorator
 
@@ -79,7 +83,7 @@ class App(routing.Service):
         def decorator(f: Callable) -> Callable:
             name = f.__module__ + "." + f.__name__
             m = _mutate(perms)(f)
-            self.add(Route(path, ApplicationEndpoint(m), methods=["POST"], name=name)) 
+            self.add(Route(path, ApplicationEndpoint(m, self), methods=["POST"], name=name)) 
             return m
         return decorator
 
@@ -102,8 +106,9 @@ def redirect(url: str, status_code: int = 302, headers: Mapping[str, str] | None
 def abort(status_code) -> HTMLResponse:
     return HTMLResponse(status_code=status_code)
 
-def authenticate(scheme="bearer") -> Callable:
-    return get_instance().authenticate(scheme)
+def authentication(cookie="session") -> Callable:
+    return get_instance().authentication(cookie)
+
 
 _services : dict[str, App] = {}
 def get_instance(name: str = "") -> App:

@@ -1,10 +1,10 @@
 
 import inspect
-from typing import Any, Awaitable, Callable, Self, get_args, get_origin
+from typing import Any, Awaitable, Callable, Self, Tuple, get_args, get_origin
 
 from asyncpg import InsufficientPrivilegeError # type:ignore
 
-from unrest.contexts.auth import User
+from unrest.contexts.auth import AuthFunction, AuthResponse, NullTenant, Tenant, User, UnauthenticatedUser
 from unrest.contexts import getLogger, query as _query, mutate as _mutate
 from unrest.contexts import Unauthorized, usercontext
 from unrest.contexts import getLogger, auth
@@ -22,15 +22,29 @@ from mangum import Mangum
 log = getLogger(__name__)
 
 
+class Service(http.Router):
+    def __init__(self, name: str | None = None, parent: Self | None = None):
+        super().__init__()
+        self.name = name
+        self._authfunction: AuthFunction = None # type:ignore
+        if parent is not None:
+            parent.mount("/%s" % name, self, name=self.name)
 
+    def add(self, route: http.Route):
+        self.routes.append(route)
+    
+    async def authenticate(self, request: http.Request) -> AuthResponse:
+        if self._authfunction is None:
+            return UnauthenticatedUser(), NullTenant(request.url)
+        return await self._authfunction(request)
 
-AuthFunction = Callable[[str], Awaitable[User]]
 
 class Endpoint:
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable, service: Service):
         self.function = func
         self.returns = None
         self.payload = None
+        self.service = service
         self.args: dict[str, Any] | None = {}
         self.kwargs: dict[str, Any] | None = {}
         
@@ -69,9 +83,6 @@ class Endpoint:
             self.args = None
         if len(self.kwargs) == 0:
             self.kwargs = None        
-
-    async def authenticate(self, request: http.Request) -> User | None:
-        raise NotImplementedError("Authentication not implemented")
     
     async def decode(self, req: http.Request) -> tuple[list, dict]:
         raise NotImplementedError("Request decoding not implemented")
@@ -81,10 +92,8 @@ class Endpoint:
 
     async def __call__(self, request: http.Request) -> http.Response:
             try:
-                user = await self.authenticate(request)
-                if user is None:
-                    user = auth.UnauthenticatedUser()
-                with usercontext(user):
+                user, tenant = await self.service.authenticate(request)
+                with usercontext(user, tenant=tenant): 
                     (args, kwargs) = await self.decode(request)
                     response = await self.function(*args, **kwargs)
                     return await self.encode(request, response)
@@ -114,26 +123,6 @@ class Endpoint:
                 return http.Response(status_code=500)
 
 
-
-class Service(http.Router):
-    def __init__(self, name: str | None = None, parent: Self | None = None):
-        super().__init__()
-        self.name = name
-        self._schemes : dict[str, AuthFunction] = {}
-        if parent is not None:
-            parent.mount("/%s" % name, self, name=self.name)
-
-    def add(self, route: http.Route):
-        self.routes.append(route)
-
-    def authenticate(self, scheme="bearer") -> Callable:
-        def decorator(f: AuthFunction) -> AuthFunction:
-            key = scheme.lower()
-            if key in self._schemes:
-                raise ValueError(f"Authentication scheme {scheme} already registered")
-            self._schemes[key] = f
-            return f
-        return decorator
 
 class Server(http.Starlette):
     def __init__(self) -> None:

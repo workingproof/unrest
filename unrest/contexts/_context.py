@@ -1,11 +1,11 @@
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
 from contextvars import ContextVar
 from inspect import iscoroutinefunction
 from typing import Any, Callable
 import uuid
 
-from unrest.contexts.auth import Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
+from unrest.contexts.auth import NullTenant, Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
 
 
 # defuser = UnauthenticatedUser("00000000-0000-0000-0000-000000000000", "", {}, {})
@@ -27,7 +27,7 @@ class Context:
         self._local: bool = None #type:ignore
         self._entrypoint: str = None #type:ignore
         self._user: User = UnauthenticatedUser() if user is None else user
-        self._tenant: Tenant | None = tenant
+        self._tenant: Tenant = NullTenant(None) if tenant is None else tenant # type:ignore
         self._vars: dict[str, Any] = {}
         self._stack = [self._vars]
 
@@ -51,24 +51,32 @@ __ctx: ContextVar[Context] = ContextVar("context", default=Context())
 def get() -> Context:
     return __ctx.get()
 
-@contextmanager
-def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFunction):
+@asynccontextmanager
+async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFunction):
     try:
         ctx = get()
-        _local = ctx._local
-        ctx._local = is_mutation
+        _root   = ctx._global is None
+        _local  = ctx._local
         _global = ctx._global
-        if ctx._global is None:
+        if _root:
             ctx._global = is_mutation
             ctx._entrypoint = f.__module__ + "." + f.__name__        
-        try:
+        ctx._local = is_mutation
+        try:        
             if not expr(ctx._user):
                raise Unauthorized("User is not authorized: %s" % f.__name__)
 
             if ctx._global is False and is_mutation:
                 raise ContextError("Cannot mutate in a query context: %s" % f.__name__)
 
-            yield ctx
+            if _root:
+                # Create a context for (root) DB connection and set tenant for RLS
+                # FIXME: user and operational context now set so this is safe here...but ugly
+                from unrest.db.pool import acquire
+                async with acquire() as conn:
+                    yield ctx
+            else:
+                yield ctx
         except Exception as e:
             # TODO: e.g. log error
             raise
@@ -80,7 +88,7 @@ def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFuncti
 
 
 @contextmanager
-def usercontext(user : User, tenant: Tenant = None):
+def usercontext(user : User, tenant: Tenant):
     token = __ctx.set(Context(user, tenant=tenant))
     try:
         yield
@@ -89,34 +97,25 @@ def usercontext(user : User, tenant: Tenant = None):
 
 def query(expr: UserPredicateFunction = Unrestricted):
     def decorator(f):
-        if iscoroutinefunction(f):
-            @wraps(f)
-            async def wrapper(*args, **kwargs):
-                with operationalcontext(False, f, expr):
-                    return await f(*args, **kwargs)
-            return wrapper
-        else:
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                with operationalcontext(False, f, expr):
-                    return f(*args, **kwargs)
-            return wrapper
+        if not iscoroutinefunction(f):
+            raise RuntimeError("Query functions must be async coroutines")
+
+        @wraps(f)
+        async def wrapper(*args, **kwargs):
+            async with operationalcontext(False, f, expr):
+                return await f(*args, **kwargs)
+        return wrapper
     return decorator
 
 def mutate(expr: UserPredicateFunction = Unrestricted):
     def decorator(f):
-        if iscoroutinefunction(f):
-            @wraps(f)
-            async def wrapper(*args, **kwargs):
-                with operationalcontext(True, f, expr):
-                    return await f(*args, **kwargs)
-            return wrapper
-        else:
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                with operationalcontext(True, f, expr):
-                    return f(*args, **kwargs)
-            return wrapper
+        if not iscoroutinefunction(f):
+            raise RuntimeError("Mutation functions must be async coroutines")
+        @wraps(f)
+        async def wrapper(*args, **kwargs):
+            async with operationalcontext(True, f, expr):
+                return await f(*args, **kwargs)
+        return wrapper
     return decorator
 
 class ContextWrapper:

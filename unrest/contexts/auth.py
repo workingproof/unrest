@@ -30,7 +30,8 @@ class Tenant:
 
 class NullTenant(Tenant):
     def __init__(self, url: http.URL) -> None:
-        super().__init__(null_uuid, url.hostname or "", {})
+        host = "" if url is None else (url.hostname or "")
+        super().__init__(str(null_uuid), host, {})
 
 
 class User:

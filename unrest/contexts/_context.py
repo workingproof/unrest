@@ -2,11 +2,11 @@ from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
 from contextvars import ContextVar
 from inspect import iscoroutinefunction
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 import uuid
 
 from unrest.contexts.auth import NullTenant, Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
-
+from unrest.http import Request
 
 # defuser = UnauthenticatedUser("00000000-0000-0000-0000-000000000000", "", {}, {})
 
@@ -30,6 +30,7 @@ class Context:
         self._tenant: Tenant = NullTenant(None) if tenant is None else tenant # type:ignore
         self._vars: dict[str, Any] = {}
         self._stack = [self._vars]
+        self._request: Optional[Request] = None
 
     @contextmanager
     def set(self, **kwargs):
@@ -95,6 +96,17 @@ def usercontext(user : User, tenant: Tenant):
     finally:
         __ctx.reset(token)
 
+@contextmanager
+def requestcontext(request: Request):
+    ctx = get()
+    req = ctx._request
+    try:
+        ctx._request = request
+        yield
+    finally:
+        ctx._request = req
+
+
 def query(expr: UserPredicateFunction = Unrestricted):
     def decorator(f):
         if not iscoroutinefunction(f):
@@ -130,6 +142,10 @@ class ContextWrapper:
     @property
     def tenant(self):
         return self._ctx._tenant
+
+    @property
+    def request(self):
+        return self._ctx._request
 
     # @contextmanager
     # def unsafe(self):

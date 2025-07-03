@@ -6,7 +6,7 @@ from asyncpg import InsufficientPrivilegeError # type:ignore
 
 from unrest.contexts.auth import AuthFunction, AuthResponse, NullTenant, Tenant, User, UnauthenticatedUser
 from unrest.contexts import getLogger, query as _query, mutate as _mutate
-from unrest.contexts import Unauthorized, usercontext
+from unrest.contexts import Unauthorized, usercontext, requestcontext 
 from unrest.contexts import getLogger, auth
 
 from unrest import Payload, ContextError, ClientError, ServerError, Unauthorized
@@ -94,9 +94,10 @@ class Endpoint:
             try:
                 user, tenant = await self.service.authenticate(request)
                 with usercontext(user, tenant=tenant): 
-                    (args, kwargs) = await self.decode(request)
-                    response = await self.function(*args, **kwargs)
-                    return await self.encode(request, response)
+                    with requestcontext(request):
+                        (args, kwargs) = await self.decode(request)
+                        response = await self.function(*args, **kwargs)
+                        return await self.encode(request, response)
             except ClientError as ex:
                 log.error(ex)
                 return http.Response(status_code=400)

@@ -1,5 +1,6 @@
 
 from typing import Any, Awaitable, Callable
+import typing
 
 from unrest import getLogger, query as _query, mutate as _mutate, Unauthorized
 from unrest import auth, http, routing
@@ -55,6 +56,8 @@ class ApiEndpoint(routing.Endpoint):
             return JSONResponse(resp)
 
         def _maybewrap(obj, payload_class):
+            if type(payload_class) is typing._TypedDictMeta:
+                return dict(**obj)
             if isinstance(obj, payload_class):
                 return obj
             else:

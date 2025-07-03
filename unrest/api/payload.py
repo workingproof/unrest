@@ -19,9 +19,23 @@ class JsonSerialisable:
     def serialise(self) -> dict | list | int | float | str | bool | None:
         raise NotImplementedError("Subclasses must implement this method.")
 
+class JSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, JsonSerialisable):
+            return obj.serialise()
+        if isinstance(obj, UUID):
+            return str(obj)
+        if isinstance(obj, Record):
+            return dict(obj)
+        if isinstance(obj, datetime):
+            return obj.strftime("%Y-%m-%d %H:%M")
+        if isinstance(obj, date):
+            return obj.strftime("%Y-%m-%d")
+        return super().default(obj)
+
+
 class Payload(BaseModel):
     pass
-
 
 class PayloadResponse(Response):
     media_type = "application/json"
@@ -39,7 +53,7 @@ class PayloadResponse(Response):
     def render(self, content: Payload | list[Payload] | dict | list[dict]) -> bytes:
         def _enc(content):
             if type(content) is dict:
-                return json.dumps(content)
+                return json.dumps(content, cls=JSONEncoder)
             else:
                 return content.model_dump_json()
 
@@ -47,21 +61,6 @@ class PayloadResponse(Response):
             return ("[%s]" % ",".join([_enc(x) for x in content])).encode("utf-8")
         else:
             return _enc(content).encode("utf-8")
-
-
-class JSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, JsonSerialisable):
-            return obj.serialise()
-        if isinstance(obj, UUID):
-            return str(obj)
-        if isinstance(obj, Record):
-            return dict(obj)
-        if isinstance(obj, datetime):
-            return obj.strftime("%Y-%m-%d %H:%M")
-        if isinstance(obj, date):
-            return obj.strftime("%Y-%m-%d")
-        return super().default(obj)
 
 
 class JSONResponse(Response):

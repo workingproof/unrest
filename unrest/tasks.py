@@ -30,6 +30,8 @@ _tasked: list[AsyncTaskiqDecoratedTask] = []
 _scheduled: list[AsyncTaskiqDecoratedTask] = []
 _pending: list[Callable] = []
 
+# FIXME: when we use InMemoryBroker then context gets confused between separate "processes",
+#        in particular, the DB pool frees the connection for client which broker tries to use 
 
 # if config.is_under_test():
 #     broker = InMemoryBroker()

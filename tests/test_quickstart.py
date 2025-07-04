@@ -70,12 +70,24 @@ async def test_example_auth_restriction_2(client: Client):
     assert response.status_code == 200
 
 async def test_example_background_task(client: Client):
-    response = await client.query("/test/background")
+    response = await client.mutate("/test/background")
     assert response.status_code == 200
-    json = response.json()
-    assert json == {"ok": True}
+    job1 = response.json()
+    assert job1 is not None
+    
+    bg_job_ran = False
+    for _ in range(5):
+        response = await client.query("/test/background/%s" % job1["id"])
+        assert response.status_code == 200
+        job2 = response.json()
+        assert job2 is not None
+        assert job2["id"] == job1["id"]
+        if job2["completed_at"] is not None:
+            bg_job_ran = True
+            break
+        await sleep(1)
 
-
+    assert bg_job_ran
 
 # async def test_example_synchronous_task(client: Client):
 #     response = await client.query("/test/synchronous/timeout")

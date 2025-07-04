@@ -28,10 +28,10 @@ class Formatter(JsonFormatter):
     def formatTime(self, record, datefmt=None):
         from unrest.contexts import context
         ctx = context._ctx
-        usr = ctx._user
+        usr = ctx.user
         record.__dict__.update({
-            "context": {"id": ctx._id, "entrypoint": ctx._entrypoint, "mutation": ctx._global, "properties": { k: v for (k,v) in ctx._vars.items() if not k.startswith("_")} },
-            "user": {"id": usr.identity, "display_name": usr.display_name, "properties": usr._props},
+            "context": {"id": ctx.id, "entrypoint": ctx._entrypoint, "mutation": ctx._global, "properties": { k: v for (k,v) in ctx._vars.items() if not k.startswith("_")} },
+            "user": {"id": usr.identity, "display_name": usr.display_name, "properties": usr.props},
         })
         return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(timespec="milliseconds")
 

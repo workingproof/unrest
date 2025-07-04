@@ -314,6 +314,10 @@ async def example_errors_logging_and_context() -> ExampleResponse:
 #
 # **Unrest** makes defining and running backgroundtasks seamless.
 #
+# Context is propagated to background tasks, so you can continue 
+# to execute and log under the same context as the triggering request.
+# Background tasks always have a `mutation` operational context.
+#
 #:python
 
 from asyncio import sleep as fake_work  # noqa
@@ -321,20 +325,30 @@ from asyncio import sleep as fake_work  # noqa
 from unrest.tasks import background
 
 @background()
-async def fire_and_forget() -> None:
+async def fire_and_forget(job_id) -> None:
+    # NB: context is propagated across to the background job
     await fake_work(2)
-    return
+    job = await db._fetchrow("update bgjobs set completed_at=now() where id=$1 and context_id=$2 and user_id=$3 returning *", job_id, context.id, context.user.identity)
+    assert job is not None
 
 #:end
 # In the API layer, these can then be used like so
 #:python
 
 
-@api.query("/test/background")
+@api.mutate("/test/background")
 async def example_background_task():
-    await fire_and_forget()
-    return {"ok": True}
+    job = await db._fetchrow("insert into bgjobs (context_id, user_id) values ($1, $2) returning *", context.id, context.user.identity)
+    await fire_and_forget(job["id"])
+    return job
 
+@api.query("/test/background/{jobid}")
+async def example_background_task_pickup(jobid: str):
+    job = await db._fetchrow("select * from bgjobs where id=$1", jobid)
+    assert job is not None
+    assert str(job["context_id"]) != str(context.id)
+    assert str(job["user_id"]) == str(context.user.identity)
+    return job
 
 
 #:end

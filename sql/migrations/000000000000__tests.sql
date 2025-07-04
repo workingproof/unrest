@@ -7,6 +7,13 @@ CREATE TABLE users (
     claims jsonb default '{}'::jsonb   
 );
 
+CREATE TABLE bgjobs (
+    id text default (uuid_generate_v4())::text not null,
+    context_id uuid not null,
+    user_id uuid not null,
+    completed_at timestamp   
+);
+
 INSERT INTO users (email, claims, apikey) VALUES
     ('foo@example.com', '{"support": false, "developer": false, "admin": true}'::jsonb, 'secretapikey123'),
     ('bar@example.com', '{"support": true}'::jsonb, 'secretapikey456'),

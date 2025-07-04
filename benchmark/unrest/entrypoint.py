@@ -1,3 +1,4 @@
+
 from unrest import db, api, auth, Payload, http
 
 @db.query
@@ -23,7 +24,6 @@ async def get_static() -> ExampleResponse:
 async def get_random() -> ExampleResponse:
     async with random() as result:
         return result
-
 
 from unrest import Server
 server = Server()

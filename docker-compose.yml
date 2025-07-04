@@ -25,35 +25,46 @@ services:
         condition: service_healthy 
 
 
-  # redis:
-  #   network_mode: "host"
-  #   image: redis
+  redis:
+    network_mode: "host"
+    image: redis
 
-  # scheduler:
-  #   network_mode: "host"  
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.dev
-  #   volumes:
-  #     - ".:/host"
-  #   command: poetry run taskiq scheduler entrypoint:scheduler
-  #   depends_on: 
-  #     redis:
-  #       condition: service_started
+  scheduler:
+    network_mode: "host"  
+    build:
+      context: .
+    volumes:
+      - ".:/host"
+    command: poetry run taskiq scheduler entrypoint:scheduler
+    depends_on: 
+      redis:
+        condition: service_started
 
-  # broker:
-  #   network_mode: "host"  
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.dev
-  #   volumes:
-  #     - ".:/host"
-  #   command: poetry run taskiq worker entrypoint:broker --reload
-  #   depends_on: 
-  #     redis:
-  #       condition: service_started
-  #     migration:
-  #       condition: service_completed_successfully        
+  broker:
+    network_mode: "host"  
+    build:
+      context: .
+    volumes:
+      - ".:/host"
+    command: poetry run taskiq worker entrypoint:broker --reload
+    depends_on: 
+      redis:
+        condition: service_started
+      migration:
+        condition: service_completed_successfully        
+
+  quickstart:
+    network_mode: "host"  
+    build:
+      context: .
+    volumes:
+      - ".:/host"
+    command: poetry run uvicorn entrypoint:server --host "0.0.0.0" --port 8000
+    depends_on:
+      postgres:
+        condition: service_healthy     
+      migration:
+        condition: service_completed_successfully
 
   unrest:
     network_mode: "host"  

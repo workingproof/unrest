@@ -13,7 +13,7 @@ from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 from unrest.contexts import context, config, getLogger
 from unrest.contexts._context import Context, operationalcontext, restorecontext, usercontext
-from unrest.contexts.auth import AuthResponse, TokenAuthFunction, Unrestricted, UserPredicateFunction
+from unrest.contexts.auth import AuthResponse, AuthenticatedUser, Tenant, TokenAuthFunction, UnauthenticatedUser, Unrestricted, UserPredicateFunction
 
 log = getLogger(__name__)
 
@@ -31,18 +31,18 @@ _scheduled: list[AsyncTaskiqDecoratedTask] = []
 _pending: list[Callable] = []
 
 
-if config.is_under_test():
-    broker = InMemoryBroker()
-    results = broker.result_backend
+# if config.is_under_test():
+#     broker = InMemoryBroker()
+#     results = broker.result_backend
+#     scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
+# else:
+uri = config.get("UNREST_REDIS_URI", "redis://localhost:6379")
+if uri:
+    results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600) # type: ignore
+    broker = ListQueueBroker(url=uri).with_result_backend(results) # type: ignore
     scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
 else:
-    uri = config.get("UNREST_REDIS_URI", "redis://localhost:6379")
-    if uri:
-        results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600)
-        broker = ListQueueBroker(url=uri).with_result_backend(results) # type: ignore
-        scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
-    else:
-        raise RuntimeError("UNREST_REDIS_URI must be set")
+    raise RuntimeError("UNREST_REDIS_URI must be set")
 
 
 async def kiq(task: AsyncTaskiqDecoratedTask, *args, **kwargs):
@@ -60,12 +60,6 @@ async def kiq(task: AsyncTaskiqDecoratedTask, *args, **kwargs):
     await task.kiq(*args, **kwargs)
 
 
-@dataclass
-class Message:
-    context: Context
-    args: list
-    kwargs: dict
-
 
 def background(pred: UserPredicateFunction = Unrestricted):
     def inner(f: Callable):
@@ -73,15 +67,15 @@ def background(pred: UserPredicateFunction = Unrestricted):
             raise RuntimeError("Background task %s is not async" % f.__name__)
 
         @wraps(f)
-        async def inner(msg: Message) -> None:
+        async def inner(context:dict, fargs:list, fkwargs:dict, is_authenticated: bool) -> None:
             try:
-                log.info("Restoring context %s for user %s in task %s", 
-                         msg.context.id, 
-                         msg.context.user.identity, 
-                         f.__name__)
-                with restorecontext(msg.context): 
+                context["user"] = AuthenticatedUser(**context["user"]) if is_authenticated else UnauthenticatedUser(**context["user"])
+                context["tenant"] = Tenant(**context["tenant"])
+                context["_global"] = None
+                ctx = Context(**context)
+                with restorecontext(ctx): 
                     async with operationalcontext(True, f, pred):
-                        await f(*msg.args, **msg.kwargs)
+                        await f(*fargs, **fkwargs)
             except Exception as e:
                 log.exception("Error in background task %s: %s", f.__name__, e)
 
@@ -90,10 +84,10 @@ def background(pred: UserPredicateFunction = Unrestricted):
 
         @wraps(f)
         async def wrapper(*args, **kwargs) -> None:
-            msg = Message(context=context._ctx.copy(), 
-                          args=list(*args),
-                          kwargs=kwargs)
-            await kiq(_task, message=msg)
+            await kiq(_task, context=context._ctx.copy(), 
+                             fargs=list(args),
+                             fkwargs=dict(kwargs),
+                             is_authenticated=context.user.is_authenticated)
 
         return wrapper
 

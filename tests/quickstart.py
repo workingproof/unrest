@@ -197,8 +197,8 @@ async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthRespo
     # This is a trivial example. Use any method you like.
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"]), auth.NullTenant(url)
-    return auth.UnauthenticatedUser(), auth.NullTenant(url)
+        return auth.AuthenticatedUser(identity=props["id"], display_name=props["email"], claims=props["claims"]), None
+    return auth.UnauthenticatedUser(), None
 
 
 #:end
@@ -241,11 +241,11 @@ async def example_auth_restriction_on_endpoint() -> ExampleResponse:
 
 @api.mutate("/test/also_secret", Roles.staff)
 async def example_auth_restriction_not_on_endpoint():
-    return not_an_api_endpoint()
+    return await not_an_api_endpoint()
 
 
 @mutate(auth.UserIsAuthenticated & ~Roles.support) 
-def not_an_api_endpoint():
+async def not_an_api_endpoint():
     return {"hello": context.user.display_name}
 
 
@@ -318,32 +318,12 @@ async def example_errors_logging_and_context() -> ExampleResponse:
 
 from asyncio import sleep as fake_work  # noqa
 
-from unrest.tasks import asynchronous, background, result, scheduled, synchronous  # noqa
-
+from unrest.tasks import background
 
 @background()
 async def fire_and_forget() -> None:
     await fake_work(2)
     return
-
-
-@scheduled("*/1 * * * *")
-async def runs_every_minute():
-    log.warning("Another minute has passed...")
-    return
-
-
-@synchronous(timeout=3.0)
-async def blocks_and_returns(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
-
-
-@asynchronous()
-async def returns_immediately(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
-
 
 #:end
 # In the API layer, these can then be used like so
@@ -355,27 +335,6 @@ async def example_background_task():
     await fire_and_forget()
     return {"ok": True}
 
-
-@api.query("/test/synchronous")
-async def example_synchronous_task():
-    return await blocks_and_returns(1)
-
-
-@api.query("/test/synchronous/timeout")
-async def example_synchronous_task_timeout():
-    # NB: will run for longer than timeout on task
-    return await blocks_and_returns(10)
-
-
-@api.query("/test/asynchronous")
-async def example_asynchronous_task():
-    task_id = await returns_immediately(1)
-    return {"task_id": task_id}
-
-
-@api.query("/test/asynchronous/{task_id:str}")
-async def example_asynchronous_task_retrieve(task_id):
-    return await result(task_id)
 
 
 #:end

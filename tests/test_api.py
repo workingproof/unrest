@@ -27,19 +27,19 @@ class ExampleRequest(Payload):
 
 
 @query()
-def anyone_can_access_this():
+async def anyone_can_access_this():
     return None
 
 @query(Roles.any)
-def an_example_query():
+async def an_example_query():
     return None
 
 @query(Roles.admin)
-def an_example_admin_query():
+async def an_example_admin_query():
     return None
 
 @mutate(Roles.any)
-def an_example_mutation():
+async def an_example_mutation():
     return None
 
 
@@ -49,10 +49,10 @@ async def authenticate_with_basic_auth(token: str, url: http.URL) -> auth.AuthRe
     try:
         decoded = base64.b64decode(token).decode("ascii")
         username, password = decoded.split(":")
-        return auth.AuthenticatedUser("", username, {}, {}), auth.NullTenant(url)
+        return auth.AuthenticatedUser(identity="", display_name=username), None
     except Exception as exc:
         log.warning('Invalid basic auth credentials')
-    return auth.UnauthenticatedUser(), auth.NullTenant(url)
+    return auth.UnauthenticatedUser(), None
 
 
 @api.query("/object/{object_id}")
@@ -72,34 +72,35 @@ async def get_objects(req: ExampleRequest, n: int) -> list[ExampleResponse]:
 @api.query("/unsafe")
 async def enforce_query_context() -> None:
     try:
-        an_example_mutation()
+        await an_example_mutation()
     except ContextError:
         log.warning("Phew! Can't accidentally run mutations in a query context!")
         raise
 
 @api.mutate("/safe")
 async def enforce_mutate_context() -> None:
-    an_example_mutation()
+    await an_example_mutation()
     
 @api.query("/protected", Roles.admin) 
 async def auth_restriction_on_endpoint():
-    an_example_admin_query()
+    await an_example_admin_query()
 
 @api.query("/also_protected")
 async def auth_restriction_not_on_endpoint():
-    an_example_admin_query()
+    await an_example_admin_query()
 
 
 @fixture
 def authenticated_user():
     from unrest.contexts import usercontext
-    with usercontext(auth.AuthenticatedUser("123", "jon", {}, {})):
+    with usercontext(auth.AuthenticatedUser(identity="123", display_name="jon", tenant=""), None):
         yield
 
 @fixture
 def client():
     cli = Client(Server()) # FIXME
     cli.headers["Authorization"] = "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+    cli.headers["Accept"] = "application/json"
     yield cli
 
 async def test_happy_path_directly(authenticated_user):

@@ -10,17 +10,15 @@ class Roles:
 @contextmanager
 def user(**kwargs):
     yield auth.AuthenticatedUser(
-        id="1",
+        identity="1",
         display_name="testuser",
-        props={},
         claims=kwargs)
 
 @contextmanager
 def nonuser(**kwargs):
     yield auth.UnauthenticatedUser(
-        id="1",
+        identity="1",
         display_name="testuser",
-        props={},
         claims=kwargs)
 
 

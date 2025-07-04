@@ -1,15 +1,19 @@
 from asyncio import create_task, sleep
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from functools import wraps
 from inspect import iscoroutinefunction
+from typing import Any, Awaitable, Callable
 
-from taskiq import TaskiqScheduler
+from taskiq import AsyncTaskiqDecoratedTask, InMemoryBroker, TaskiqScheduler
 from taskiq.exceptions import ResultGetError, TaskiqResultTimeoutError
 from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 
 from unrest.contexts import context, config, getLogger
+from unrest.contexts._context import Context, operationalcontext, restorecontext, usercontext
+from unrest.contexts.auth import AuthResponse, TokenAuthFunction, Unrestricted, UserPredicateFunction
 
 log = getLogger(__name__)
 
@@ -21,55 +25,90 @@ class TaskTimeout(TaskiqResultTimeoutError):
 class TaskNotReady(ResultGetError):
     pass
 
-
-# if config.is_under_test() is not None:
-#     self.started = False
-#     self.broker = InMemoryBroker()
-#     self.results = self.broker.result_backend
-#     self.scheduler = TaskiqScheduler(broker=self.broker, sources=[LabelScheduleSource(self.broker)])
-# else:
-uri = config.get("UNREST_REDIS_URI", "redis://localhost:6379")
-results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600)
-broker = ListQueueBroker(url=uri).with_result_backend(results)
-scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
-
-_tasked = []
-_scheduled = []
-_pending = []
+_started = False
+_tasked: list[AsyncTaskiqDecoratedTask] = []
+_scheduled: list[AsyncTaskiqDecoratedTask] = []
+_pending: list[Callable] = []
 
 
-@asynccontextmanager
-async def lifespan(app):
-    if len(_scheduled) > 0 or len(_tasked) > 0:
-        await results.startup()
-        await broker.startup()
-        await scheduler.startup()
+if config.is_under_test():
+    broker = InMemoryBroker()
+    results = broker.result_backend
+    scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
+else:
+    uri = config.get("UNREST_REDIS_URI", "redis://localhost:6379")
+    if uri:
+        results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600)
+        broker = ListQueueBroker(url=uri).with_result_backend(results) # type: ignore
+        scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
+    else:
+        raise RuntimeError("UNREST_REDIS_URI must be set")
 
-    if len(_pending) > 0:
-        for f in _pending:
-            create_task(f())
-    yield {}
+
+async def kiq(task: AsyncTaskiqDecoratedTask, *args, **kwargs):
+    global _started
+    if not _started:
+        _started = True
+        if len(_scheduled) > 0 or len(_tasked) > 0:
+            await results.startup()
+            await broker.startup()
+            await scheduler.startup()
+
+        if len(_pending) > 0:
+            for f in _pending:
+                create_task(f())
+    await task.kiq(*args, **kwargs)
 
 
-async def result(task_id):
-    if await results.is_result_ready(task_id):
-        try:
-            res = await results.get_result(task_id)
-        except Exception:
-            raise TaskNotReady("Please try again later")
-        res.raise_for_error()
-        return res.return_value
-    raise TaskNotReady("Please try again later")
+@dataclass
+class Message:
+    context: Context
+    args: list
+    kwargs: dict
+
+
+def background(pred: UserPredicateFunction = Unrestricted):
+    def inner(f: Callable):
+        if not iscoroutinefunction(f):
+            raise RuntimeError("Background task %s is not async" % f.__name__)
+
+        @wraps(f)
+        async def inner(msg: Message) -> None:
+            try:
+                log.info("Restoring context %s for user %s in task %s", 
+                         msg.context.id, 
+                         msg.context.user.identity, 
+                         f.__name__)
+                with restorecontext(msg.context): 
+                    async with operationalcontext(True, f, pred):
+                        await f(*msg.args, **msg.kwargs)
+            except Exception as e:
+                log.exception("Error in background task %s: %s", f.__name__, e)
+
+        _task = (broker.task())(inner)
+        _tasked.append(_task)
+
+        @wraps(f)
+        async def wrapper(*args, **kwargs) -> None:
+            msg = Message(context=context._ctx.copy(), 
+                          args=list(*args),
+                          kwargs=kwargs)
+            await kiq(_task, message=msg)
+
+        return wrapper
+
+    return inner
+
 
 
 def scheduled(schedule):
-    def inner(f: callable):
+    def inner(f: Callable):
         if not iscoroutinefunction(f):
             raise RuntimeError("Background task %s is not async" % f.__name__)
 
         @wraps(f)
         async def inner(*args, **kwargs):
-            context.set(False)
+            # NB: no context to set restore here, but should still set one up
             return await f(*args, **kwargs)
 
         _task = (broker.task(schedule=[{"cron": schedule}]))(inner)
@@ -79,80 +118,69 @@ def scheduled(schedule):
     return inner
 
 
-def background():
-    def inner(f: callable):
-        if not iscoroutinefunction(f):
-            raise RuntimeError("Background task %s is not async" % f.__name__)
-
-        @wraps(f)
-        async def inner(*args, **kwargs):
-            context.set(False)
-            return await f(*args, **kwargs)
-
-        _task = (broker.task())(inner)
-        _tasked.append(_task)
-
-        @wraps(f)
-        async def wrapper(*args, **kwargs):
-            await _task.kiq(*args, **kwargs)
-
-        return wrapper
-
-    return inner
+# async def result(task_id):
+#     if await results.is_result_ready(task_id):
+#         try:
+#             res = await results.get_result(task_id)
+#         except Exception:
+#             raise TaskNotReady("Please try again later")
+#         res.raise_for_error()
+#         return res.return_value
+#     raise TaskNotReady("Please try again later")
 
 
-def synchronous(timeout=10.0):
-    def inner(f: callable):
-        if not iscoroutinefunction(f):
-            raise RuntimeError("Background task %s is not async" % f.__name__)
+# def synchronous(timeout=10.0):
+#     def inner(f: callable):
+#         if not iscoroutinefunction(f):
+#             raise RuntimeError("Background task %s is not async" % f.__name__)
 
-        @wraps(f)
-        async def inner(*args, **kwargs):
-            context.set(False)
-            return await f(*args, **kwargs)
+#         @wraps(f)
+#         async def inner(*args, **kwargs):
+#             context.set(False)
+#             return await f(*args, **kwargs)
 
-        _task = (broker.task())(inner)
-        _tasked.append(_task)
+#         _task = (broker.task())(inner)
+#         _tasked.append(_task)
 
-        @wraps(f)
-        async def wrapper(*args, **kwargs):
-            task = await _task.kiq(*args, **kwargs)
-            try:
-                res = await task.wait_result(timeout=timeout)
-                return res.return_value
-            except Exception:
-                raise TaskTimeout()
+#         @wraps(f)
+#         async def wrapper(*args, **kwargs):
+#             task = await _task.kiq(*args, **kwargs)
+#             try:
+#                 res = await task.wait_result(timeout=timeout)
+#                 return res.return_value
+#             except Exception:
+#                 raise TaskTimeout()
 
-        return wrapper
+#         return wrapper
 
-    return inner
+#     return inner
 
 
-def asynchronous():
-    def inner(f: callable):
-        if not iscoroutinefunction(f):
-            raise RuntimeError("Background task %s is not async" % f.__name__)
+# def asynchronous():
+#     def inner(f: callable):
+#         if not iscoroutinefunction(f):
+#             raise RuntimeError("Background task %s is not async" % f.__name__)
 
-        @wraps(f)
-        async def inner(*args, **kwargs):
-            context.set(False)
-            return await f(*args, **kwargs)
+#         @wraps(f)
+#         async def inner(*args, **kwargs):
+#             context.set(False)
+#             return await f(*args, **kwargs)
 
-        _task = (broker.task())(inner)
-        _tasked.append(_task)
+#         _task = (broker.task())(inner)
+#         _tasked.append(_task)
 
-        @wraps(f)
-        async def wrapper(*args, **kwargs):
-            task = await _task.kiq(*args, **kwargs)
-            return task.task_id
+#         @wraps(f)
+#         async def wrapper(*args, **kwargs):
+#             task = await _task.kiq(*args, **kwargs)
+#             return task.task_id
 
-        return wrapper
+#         return wrapper
 
-    return inner
+#     return inner
 
 
 def lightweight(every=10.0):
-    def inner(f: callable):
+    def inner(f: Callable):
         if not iscoroutinefunction(f):
             raise RuntimeError("Background task %s is not async" % f.__name__)
 

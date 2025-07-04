@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Tuple
@@ -6,73 +7,48 @@ import uuid
 from unrest import http
 
 null_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+NULL_IDENTITY = str(null_uuid)
 
+@dataclass(kw_only=True)
 class Tenant:
-    def __init__(self, id: str, display_name: str, props: Mapping[str, Any] = {}) -> None:
-        self._id = id
-        self._display_name = display_name
-        self._props = dict(props)
-
-    @property
-    def display_name(self) -> str:
-        return self._display_name
-
-    @property
-    def identity(self) -> str:
-        return self._id
+    identity: str = NULL_IDENTITY
+    display_name: str = ""
+    props: Mapping[str, Any] = field(default_factory=dict)
 
     def __getitem__(self, key):
-        return self._props[key]
+        return self.props[key]
 
     def get(self, key, default=None):
-        return self._props.get(key, default)
+        return self.props.get(key, default)
 
 
-class NullTenant(Tenant):
-    def __init__(self, url: http.URL) -> None:
-        host = "" if url is None else (url.hostname or "")
-        super().__init__(str(null_uuid), host, {})
-
-
+@dataclass(kw_only=True)
 class User:
-    def __init__(self, id: str, display_name: str, props: Mapping[str, Any], claims: Mapping[str, bool], tenant:str=null_uuid) -> None:
-        self._id = id
-        self._display_name = display_name
-        self._claims = dict(claims)
-        self._props = dict(props)
-        self._tenant = tenant
+    identity: str
+    display_name: str
+    tenant: str = NULL_IDENTITY
+    props: Mapping[str, Any] = field(default_factory=dict)
+    claims: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def is_authenticated(self) -> bool:
         return False
 
-    @property
-    def display_name(self) -> str:
-        return self._display_name
-
-    @property
-    def identity(self) -> str:
-        return self._id
-
-    @property
-    def tenant(self) -> str:
-        return self._tenant
-
 
     def __getitem__(self, key):
-        return self._props[key]
+        return self.props[key]
 
     def get(self, key, default=None):
-        return self._props.get(key, default)
+        return self.props.get(key, default)
 
     def is_authorized(self, claim: str) -> bool:
         from unrest import context
         if not self.is_authenticated:
             return False
         if context._ctx._local is not None:
-            return claim in self._claims and self._claims[claim] >= context._ctx._local
+            return claim in self.claims and self.claims[claim] >= context._ctx._local
         else:
-            return claim in self._claims 
+            return claim in self.claims 
 
 
 class AuthenticatedUser(User):
@@ -81,15 +57,21 @@ class AuthenticatedUser(User):
         return True
     
 class UnauthenticatedUser(User):
-    def __init__(self, id: str = null_uuid, display_name: str = "", props: Mapping[str, Any] = {}, claims: Mapping[str, bool] = {}, tenant: str = null_uuid) -> None:
-        super().__init__(id, display_name, props, claims, tenant=tenant)
+    def __init__(self, identity: str = str(null_uuid), display_name: str = "", props: Mapping[str, Any] = {}, claims: Mapping[str, bool] = {}, tenant: str = str(null_uuid)) -> None:
+        super().__init__(identity=identity, display_name=display_name, props=props, claims=claims, tenant=tenant)
 
     @property
     def is_authenticated(self) -> bool:
         return False
 
 
+class System(User):
+    def __init__(self, tenant: str) -> None:
+        super().__init__(identity=str(null_uuid), display_name="__system__", tenant=tenant)
 
+    @property
+    def is_authenticated(self) -> bool:
+        return True
 
 
 class UserPredicateFunction(Protocol):
@@ -132,7 +114,7 @@ class Claim(UserPredicate):
         self._name = name
     def __call__(self, user: User) -> bool:
         from unrest.contexts import context
-        return user.is_authenticated and self._name in user._claims and user._claims[self._name] >= context._ctx._local    
+        return user.is_authenticated and self._name in user.claims and user.claims[self._name] >= context._ctx._local     
     
 
 
@@ -150,7 +132,7 @@ UserIsAuthenticated = UserIsAuthenticatedHelper()
 
 
 
-AuthResponse = Tuple[User, Tenant]
+AuthResponse = Tuple[User, Tenant | None]
 AuthFunction = Callable[[http.Request], Awaitable[AuthResponse]]
 
 TokenAuthFunction = Callable[[str|None, http.URL], Awaitable[AuthResponse]]

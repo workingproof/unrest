@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable, Self, Tuple, get_args, get_origin
 
 from asyncpg import InsufficientPrivilegeError # type:ignore
 
-from unrest.contexts.auth import AuthFunction, AuthResponse, NullTenant, Tenant, User, UnauthenticatedUser
+from unrest.contexts.auth import AuthFunction, AuthResponse, Tenant, User, UnauthenticatedUser
 from unrest.contexts import getLogger, query as _query, mutate as _mutate
 from unrest.contexts import Unauthorized, usercontext, requestcontext 
 from unrest.contexts import getLogger, auth
@@ -35,7 +35,7 @@ class Service(http.Router):
     
     async def authenticate(self, request: http.Request) -> AuthResponse:
         if self._authfunction is None:
-            return UnauthenticatedUser(), NullTenant(request.url)
+            return UnauthenticatedUser(), Tenant()
         return await self._authfunction(request)
 
 
@@ -93,7 +93,7 @@ class Endpoint:
     async def __call__(self, request: http.Request) -> http.Response:
             try:
                 user, tenant = await self.service.authenticate(request)
-                with usercontext(user, tenant=tenant): 
+                with usercontext(user, tenant=tenant):  
                     with requestcontext(request):
                         (args, kwargs) = await self.decode(request)
                         response = await self.function(*args, **kwargs)

@@ -69,11 +69,11 @@ async def test_example_auth_restriction_2(client: Client):
     response = await client.mutate("/test/also_secret", headers=admin_headers)
     assert response.status_code == 200
 
-# async def test_example_background_task(client: Client):
-#     response = await client.query("/test/background")
-#     assert response.status_code == 200
-#     json = response.json()
-#     assert json == {"ok": True}
+async def test_example_background_task(client: Client):
+    response = await client.query("/test/background")
+    assert response.status_code == 200
+    json = response.json()
+    assert json == {"ok": True}
 
 
 

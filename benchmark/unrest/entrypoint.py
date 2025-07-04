@@ -12,8 +12,8 @@ class ExampleResponse(Payload):
 async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthResponse:
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"]), auth.NullTenant(url)
-    return auth.UnauthenticatedUser(), auth.NullTenant(url)
+        return auth.AuthenticatedUser(identity=props["id"], display_name=props["email"], claims=props["claims"]), None
+    return auth.UnauthenticatedUser(), None
 
 @api.query("/static")
 async def get_static() -> ExampleResponse:

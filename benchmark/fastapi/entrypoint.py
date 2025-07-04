@@ -11,7 +11,7 @@ class ExampleResponse(BaseModel):
     id: str
     email: str
 
-class users(SQLModel, table=True):
+class users(SQLModel, table=True): # type:ignore
     id: str = Field(primary_key=True)
     email: str = Field()
     apikey: str = Field()

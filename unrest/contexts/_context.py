@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass, field
 from functools import wraps
 from contextvars import ContextVar
 from inspect import iscoroutinefunction
 from typing import Any, Callable, Optional
 import uuid
 
-from unrest.contexts.auth import NullTenant, Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
+from unrest.contexts.auth import Tenant, User, UnauthenticatedUser, UserPredicateFunction, Unrestricted
 from unrest.http import Request
 
 # defuser = UnauthenticatedUser("00000000-0000-0000-0000-000000000000", "", {}, {})
@@ -20,17 +21,21 @@ class Unauthenticated(ContextError):
     pass
 
 
+@dataclass(kw_only=True)
 class Context:
-    def __init__(self, user: User | None = None, tenant: Tenant | None = None) -> None:
-        self._id = str(uuid.uuid4())
-        self._global: bool = None #type:ignore
-        self._local: bool = None #type:ignore
-        self._entrypoint: str = None #type:ignore
-        self._user: User = UnauthenticatedUser() if user is None else user
-        self._tenant: Tenant = NullTenant(None) if tenant is None else tenant # type:ignore
-        self._vars: dict[str, Any] = {}
-        self._stack = [self._vars]
-        self._request: Optional[Request] = None
+    id: str = str(uuid.uuid4())
+    user: User = field(default_factory=lambda: UnauthenticatedUser())
+    tenant: Tenant = field(default_factory=lambda: Tenant())
+    
+    _request: Optional[Request] = None
+    _global: bool = None #type:ignore
+    _local: bool = None #type:ignore
+    _entrypoint: str = None #type:ignore
+    _vars: dict[str, Any] = field(default_factory=dict)
+    _stack: list[dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self._stack.append(self._vars)
 
     @contextmanager
     def set(self, **kwargs):
@@ -43,7 +48,19 @@ class Context:
             self._stack.pop()
             self._vars = self._stack[-1]
 
-
+    def copy(self) -> "Context":
+        stack = [ dict(s) for s in self._stack ]
+        return Context(
+            id=self.id,
+            user=self.user,
+            tenant=self.tenant,
+            _request=None,
+            _global=self._global,
+            _local=self._local,
+            _entrypoint=self._entrypoint,
+            _stack=stack,
+            _vars=stack[-1],
+        )
 
 
 
@@ -64,7 +81,7 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
             ctx._entrypoint = f.__module__ + "." + f.__name__        
         ctx._local = is_mutation
         try:        
-            if not expr(ctx._user):
+            if not expr(ctx.user):
                raise Unauthorized("User is not authorized: %s" % f.__name__)
 
             if ctx._global is False and is_mutation:
@@ -88,9 +105,20 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
         raise ContextError("No context")
 
 
+
+
+
 @contextmanager
-def usercontext(user : User, tenant: Tenant):
-    token = __ctx.set(Context(user, tenant=tenant))
+def usercontext(user : User, tenant: Tenant | None = None, id: str | None = None):
+    token = __ctx.set(Context(user=user, tenant=tenant or Tenant(), id=id or str(uuid.uuid4())))  
+    try:
+        yield
+    finally:
+        __ctx.reset(token)
+
+@contextmanager
+def restorecontext(context: Context):
+    token = __ctx.set(context)
     try:
         yield
     finally:
@@ -136,16 +164,20 @@ class ContextWrapper:
         return get()
 
     @property
+    def id(self):
+        return self._ctx.id
+    
+    @property
     def user(self):
-        return self._ctx._user
+        return self._ctx.user
 
     @property
     def tenant(self):
-        return self._ctx._tenant
+        return self._ctx.tenant
 
     @property
     def request(self):
-        return self._ctx._request
+        return self._ctx.request
 
     # @contextmanager
     # def unsafe(self):

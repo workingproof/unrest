@@ -179,7 +179,7 @@ async def migrate(execute: bool = False, dryrun: bool = True):
     """
     schema, _ = _deets()
 
-    def find_migrations(migrations_dir=".", current_version: str = None):
+    def find_migrations(migrations_dir=".", current_version: str | None = None):
         migrations = []
         for path, dirnames, filenames in os.walk(migrations_dir):
             for file in filenames:

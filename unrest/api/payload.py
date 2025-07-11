@@ -1,3 +1,4 @@
+from decimal import Decimal
 import inspect
 import json
 import typing
@@ -31,6 +32,8 @@ class JSONEncoder(json.JSONEncoder):
             return obj.strftime("%Y-%m-%d %H:%M")
         if isinstance(obj, date):
             return obj.strftime("%Y-%m-%d")
+        if isinstance(obj, Decimal):
+            return float(obj)
         return super().default(obj)
 
 

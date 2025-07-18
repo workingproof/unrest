@@ -1,12 +1,13 @@
 from contextvars import ContextVar
-import json
 from contextlib import asynccontextmanager
-from asyncpg import create_pool, connect as _connect, Pool as BasePool
+from asyncpg import create_pool, Pool as BasePool
 from asyncpg.connection import Connection
 
-from unrest import context, config
+from unrest import context, config, getLogger
 
-_connection = ContextVar[Connection]("db_connection", default=None)
+_connection = ContextVar[Connection]("db_connection")
+
+log = getLogger(__name__)
 
 class Pool:
     def __init__(self, **kwargs):
@@ -21,14 +22,17 @@ class Pool:
         conn = _connection.get(None)
         if conn is None:
             if self.pool is None: 
-                self.pool = await create_pool(**self.args)
+                self.pool = await create_pool(**self.args) # type: ignore
             conn = await self.pool.acquire()            
             token = _connection.set(conn)
             try:
                 await conn.execute("SET rls.tenant = '%s';" % str(context.tenant.identity))  
                 yield conn
             finally:    
-                await self.pool.release(conn)
+                try:
+                    await self.pool.release(conn)
+                except Exception as e:
+                    log.warning("Error releasing connection back to pool: %s", e)
                 _connection.reset(token)
         else:
             yield conn
@@ -68,6 +72,8 @@ def get_instance():
                 raise RuntimeError("Invalid Postgres DSN configuration")
             _readers = Pool(dsn=slave, min_size=3, command_timeout=60)
         return _readers
+    
+    raise RuntimeError("Invalid operational context for database access: %s" % context._ctx._global)
 
 @asynccontextmanager
 async def acquire():

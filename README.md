@@ -2,6 +2,10 @@
 
 A lean and mean web framework for Python / Postgres.
 
+## WARNING
+
+**This code is not fit for general consumption: use at your own risk.**
+
 ## Quickstart
 
 ```

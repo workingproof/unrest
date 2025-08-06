@@ -197,8 +197,8 @@ async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthRespo
     # This is a trivial example. Use any method you like.
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(identity=props["id"], display_name=props["email"], claims=props["claims"]), None
-    return auth.UnauthenticatedUser(), None
+        return auth.AuthenticatedUser(identity=props["id"], display_name=props["email"], claims=props["claims"]), auth.Tenant()
+    return auth.UnauthenticatedUser(), auth.Tenant()
 
 
 #:end

@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
-loglevel = logging.INFO
-
+loglevel = logging.WARNING
 
 def getLogger(name):
     log = logging.getLogger(name)

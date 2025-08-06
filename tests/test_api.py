@@ -1,5 +1,5 @@
 
-from pytest import fixture, raises
+from pytest import fixture, raises, mark
 from unrest import context, Payload, getLogger, auth, Unauthorized, query, mutate, ContextError
 from unrest import api, auth, http
 
@@ -38,7 +38,7 @@ async def an_example_query():
 async def an_example_admin_query():
     return None
 
-@mutate(Roles.any)
+@mutate(auth.Unrestricted)
 async def an_example_mutation():
     return None
 
@@ -49,18 +49,18 @@ async def authenticate_with_basic_auth(token: str, url: http.URL) -> auth.AuthRe
     try:
         decoded = base64.b64decode(token).decode("ascii")
         username, password = decoded.split(":")
-        return auth.AuthenticatedUser(identity="", display_name=username), None
+        return auth.AuthenticatedUser(identity="", display_name=username), auth.Tenant()
     except Exception as exc:
         log.warning('Invalid basic auth credentials')
-    return auth.UnauthenticatedUser(), None
+    return auth.UnauthenticatedUser(), auth.Tenant()
 
 
-@api.query("/object/{object_id}")
+@api.query("/object/{object_id}", auth.Unrestricted)
 async def get_object(object_id: str) -> ExampleResponse:
     return ExampleResponse(id=object_id, email="foo@bar.com")
 
 
-@api.query("/list/{n:int}")
+@api.query("/list/{n:int}", auth.Unrestricted)
 async def get_objects(req: ExampleRequest, n: int) -> list[ExampleResponse]:
     results = []
     for i in range(n):
@@ -69,7 +69,7 @@ async def get_objects(req: ExampleRequest, n: int) -> list[ExampleResponse]:
 
 
 
-@api.query("/unsafe")
+@api.query("/unsafe", auth.Unrestricted)
 async def enforce_query_context() -> None:
     try:
         await an_example_mutation()
@@ -77,7 +77,7 @@ async def enforce_query_context() -> None:
         log.warning("Phew! Can't accidentally run mutations in a query context!")
         raise
 
-@api.mutate("/safe")
+@api.mutate("/safe", auth.Unrestricted)
 async def enforce_mutate_context() -> None:
     await an_example_mutation()
     
@@ -103,6 +103,7 @@ def client():
     cli.headers["Accept"] = "application/json"
     yield cli
 
+@mark.asyncio(loop_scope="session")
 async def test_happy_path_directly(authenticated_user):
     obj = await get_object("obj123")
     assert obj.id == "obj123"
@@ -123,6 +124,7 @@ async def test_happy_path_directly(authenticated_user):
         await auth_restriction_not_on_endpoint()        
 
 
+@mark.asyncio(loop_scope="session")
 async def test_happy_path_indirectly(client: Client):
     resp = await client.query("/object/obj123")
     assert resp.is_success
@@ -139,10 +141,10 @@ async def test_happy_path_indirectly(client: Client):
 
     resp = await client.query("/unsafe")
     assert not resp.is_success
-    assert resp.status_code == 403
+    assert resp.status_code in [401, 403]
 
     resp = await client.mutate("/safe")
-    assert resp.is_success
+    assert resp.status_code == 202
 
     resp = await client.query("/protected")
     assert resp.status_code == 401

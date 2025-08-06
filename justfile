@@ -6,9 +6,6 @@ set dotenv-load := true
 _default:
 	just --list
 
-# Start the test DB
-up:
-	sudo docker-compose up -d
 
 # Reset the database
 reset:
@@ -19,7 +16,7 @@ apply:
 	poetry run unrest db apply
 
 # Run the test suite
-test: up reset
+test: reset
 	poetry run pytest
 
 # Generate documentation

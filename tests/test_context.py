@@ -1,4 +1,4 @@
-from pytest import raises
+from pytest import raises, mark
 from contextlib import contextmanager
 from unrest.contexts import context, usercontext, query, mutate, auth, ContextError, config, Unauthorized
 
@@ -34,9 +34,11 @@ async def some_mutate(val: str):
 async def bad_query(val: str):
     return await some_mutate(val)
 
+@mark.asyncio(loop_scope="session")
 async def test_is_under_test():
     assert config.is_under_test()
 
+@mark.asyncio(loop_scope="session")
 async def test_happy_path():
     val = "test"
     expected = {"ok": True, "val": val}
@@ -93,7 +95,8 @@ async def test_happy_path():
 
             with raises(Unauthorized):
                 await some_mutate(val)
-                
+
+@mark.asyncio(loop_scope="session")                
 async def test_escalation():
     val = "test"
     expected = {"ok": True, "val": val}

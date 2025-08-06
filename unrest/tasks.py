@@ -30,21 +30,19 @@ _tasked: list[AsyncTaskiqDecoratedTask] = []
 _scheduled: list[AsyncTaskiqDecoratedTask] = []
 _pending: list[Callable] = []
 
-# FIXME: when we use InMemoryBroker then context gets confused between separate "processes",
-#        in particular, the DB pool frees the connection for client which broker tries to use 
 
-# if config.is_under_test():
-#     broker = InMemoryBroker()
-#     results = broker.result_backend
-#     scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
-# else:
-uri = config.get("UNREST_REDIS_URI", "redis://localhost:6379")
-if uri:
-    results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600) # type: ignore
-    broker = ListQueueBroker(url=uri).with_result_backend(results) # type: ignore
+if config.is_under_test():
+    broker = InMemoryBroker()
+    results = broker.result_backend
     scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
 else:
-    raise RuntimeError("UNREST_REDIS_URI must be set")
+    uri = config.get("REDIS_URI", "redis://localhost:6379")
+    if uri:
+        results = RedisAsyncResultBackend(redis_url=uri, result_ex_time=3600) # type: ignore
+        broker = ListQueueBroker(url=uri).with_result_backend(results) # type: ignore
+        scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])
+    else:
+        raise RuntimeError("REDIS_URI must be set")
 
 
 async def kiq(task: AsyncTaskiqDecoratedTask, *args, **kwargs):

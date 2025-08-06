@@ -20,7 +20,7 @@ class Pool:
         global _connection
         # NB: we need the USER context to set the correct tenant in Postgres for RLS
         conn = _connection.get(None)
-        if conn is None:
+        if conn is None or conn._con is None:
             if self.pool is None: 
                 self.pool = await create_pool(**self.args) # type: ignore
             conn = await self.pool.acquire()            

@@ -198,12 +198,12 @@ from HTTP headers and Cookies and it is simply your job to implement the mapping
 from unrest import db, api, auth, http
 
 @api.authentication("bearer")
-async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthResponse: 
-    # This is a trivial example. Use any method you like
+async def authenticate_with_api_key(token: str, url: http.URL) -> auth.AuthResponse:
+    # This is a trivial example. Use any method you like.
     props = await db._fetchrow("select id, email, claims from users where apikey = $1", token)
     if props:
-        return auth.AuthenticatedUser(props["id"], props["email"], {}, props["claims"]), NullTenant(url)
-    return auth.UnauthenticatedUser(), auth.NullTenant(url)
+        return auth.AuthenticatedUser(identity=props["id"], display_name=props["email"], claims=props["claims"]), auth.Tenant()
+    return auth.UnauthenticatedUser(), auth.Tenant()
 
 
 ```
@@ -248,11 +248,11 @@ async def example_auth_restriction_on_endpoint() -> ExampleResponse:
 
 @api.mutate("/test/also_secret", Roles.staff)
 async def example_auth_restriction_not_on_endpoint():
-    return not_an_api_endpoint()
+    return await not_an_api_endpoint()
 
 
 @mutate(auth.UserIsAuthenticated & ~Roles.support) 
-def not_an_api_endpoint():
+async def not_an_api_endpoint():
     return {"hello": context.user.display_name}
 
 
@@ -324,37 +324,23 @@ will emit
 
 **Unrest** makes defining and running backgroundtasks seamless.
 
+Context is propagated to background tasks, so you can continue 
+to execute and log under the same context as the triggering request.
+Background tasks always have a `mutation` operational context.
+
 
 ```python
 
 from asyncio import sleep as fake_work  # noqa
 
-from unrest.tasks import asynchronous, background, result, scheduled, synchronous  # noqa
-
+from unrest.tasks import background
 
 @background()
-async def fire_and_forget() -> None:
+async def fire_and_forget(job_id) -> None:
+    # NB: context is propagated across to the background job
     await fake_work(2)
-    return
-
-
-@scheduled("*/1 * * * *")
-async def runs_every_minute():
-    log.warning("Another minute has passed...")
-    return
-
-
-@synchronous(timeout=3.0)
-async def blocks_and_returns(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
-
-
-@asynchronous()
-async def returns_immediately(secs: int) -> dict:
-    await fake_work(secs)
-    return {"ok": True}
-
+    job = await db._fetchrow("update bgjobs set completed_at=now() where id=$1 and context_id=$2 and user_id=$3 returning *", job_id, context.id, context.user.identity)
+    assert job is not None
 
 ```
 
@@ -363,32 +349,19 @@ In the API layer, these can then be used like so
 ```python
 
 
-@api.query("/test/background")
+@api.mutate("/test/background")
 async def example_background_task():
-    await fire_and_forget()
-    return {"ok": True}
+    job = await db._fetchrow("insert into bgjobs (context_id, user_id) values ($1, $2) returning *", context.id, context.user.identity)
+    await fire_and_forget(job["id"])
+    return job
 
-
-@api.query("/test/synchronous")
-async def example_synchronous_task():
-    return await blocks_and_returns(1)
-
-
-@api.query("/test/synchronous/timeout")
-async def example_synchronous_task_timeout():
-    # NB: will run for longer than timeout on task
-    return await blocks_and_returns(10)
-
-
-@api.query("/test/asynchronous")
-async def example_asynchronous_task():
-    task_id = await returns_immediately(1)
-    return {"task_id": task_id}
-
-
-@api.query("/test/asynchronous/{task_id:str}")
-async def example_asynchronous_task_retrieve(task_id):
-    return await result(task_id)
+@api.query("/test/background/{jobid}")
+async def example_background_task_pickup(jobid: str):
+    job = await db._fetchrow("select * from bgjobs where id=$1", jobid)
+    assert job is not None
+    assert str(job["context_id"]) != str(context.id)
+    assert str(job["user_id"]) == str(context.user.identity)
+    return job
 
 
 ```

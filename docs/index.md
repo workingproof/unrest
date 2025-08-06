@@ -5,7 +5,7 @@ A lean and mean web framework for Python / Postgres.
 ## Quickstart
 
 ```
-    $ pip install unrest
+    $ pip install git+https://github.com/workingproof/unrest.git
 ```
 
 ```python

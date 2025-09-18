@@ -4,7 +4,7 @@ import sys
 import dotenv
 
 # We can't rely on tooling to do this properly, so force
-dotenv.load_dotenv("%s.env" % os.environ.get("ENVIRONMENT", ""), override=True)
+dotenv.load_dotenv("%s.env" % os.environ.get("ENVIRONMENT", ""), override=False)
 
 
 def is_under_test() -> bool:

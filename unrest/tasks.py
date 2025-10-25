@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any, Awaitable, Callable
+import sys
 
 from taskiq import AsyncTaskiqDecoratedTask, InMemoryBroker, TaskiqScheduler
 from taskiq.exceptions import ResultGetError, TaskiqResultTimeoutError
@@ -12,8 +13,8 @@ from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 
 from unrest.contexts import context, config, getLogger
-from unrest.contexts._context import Context, operationalcontext, restorecontext, usercontext
-from unrest.contexts.auth import AuthResponse, AuthenticatedUser, Tenant, TokenAuthFunction, UnauthenticatedUser, Unrestricted, UserPredicateFunction
+from unrest.contexts._context import Context, operationalcontext, restorecontext, systemcontext
+from unrest.contexts.auth import AuthResponse, AuthenticatedUser, System, Tenant, TokenAuthFunction, UnauthenticatedUser, Unrestricted, UserPredicateFunction
 
 log = getLogger(__name__)
 
@@ -60,22 +61,32 @@ async def kiq(task: AsyncTaskiqDecoratedTask, *args, **kwargs):
     await task.kiq(*args, **kwargs)
 
 
+async def _create_context_payload(args, kwargs) -> dict:
+    return {
+        "context": context._ctx.copy(),
+        "fargs": list(args),
+        "fkwargs": dict(kwargs),
+        "is_authenticated": context.user.is_authenticated
+    }
+
 
 def background(pred: UserPredicateFunction = Unrestricted):
     def inner(f: Callable):
         if not iscoroutinefunction(f):
             raise RuntimeError("Background task %s is not async" % f.__name__)
 
+        # print("Registered background task: %s" % f.__name__, file=sys.stderr)
+
         @wraps(f)
-        async def inner(context:dict, fargs:list, fkwargs:dict, is_authenticated: bool) -> None:
+        async def inner(context_payload: dict) -> None:
             try:
-                context["user"] = AuthenticatedUser(**context["user"]) if is_authenticated else UnauthenticatedUser(**context["user"])
-                context["tenant"] = Tenant(**context["tenant"])
-                context["_global"] = None
-                ctx = Context(**context)
+                context_payload["context"]["user"] = AuthenticatedUser(**context_payload["context"]["user"]) if context_payload["is_authenticated"] else UnauthenticatedUser(**context_payload["context"]["user"])
+                context_payload["context"]["tenant"] = Tenant(**context_payload["context"]["tenant"])
+                context_payload["context"]["_global"] = None
+                ctx = Context(**context_payload["context"])
                 with restorecontext(ctx): 
                     async with operationalcontext(True, f, pred):
-                        await f(*fargs, **fkwargs)
+                        await f(*context_payload["fargs"], **context_payload["fkwargs"])
             except Exception as e:
                 log.exception("Error in background task %s: %s", f.__name__, e)
 
@@ -84,10 +95,7 @@ def background(pred: UserPredicateFunction = Unrestricted):
 
         @wraps(f)
         async def wrapper(*args, **kwargs) -> None:
-            await kiq(_task, context=context._ctx.copy(), 
-                             fargs=list(args),
-                             fkwargs=dict(kwargs),
-                             is_authenticated=context.user.is_authenticated)
+            await kiq(_task, await _create_context_payload(args, kwargs))
 
         return wrapper
 
@@ -100,10 +108,13 @@ def scheduled(schedule):
         if not iscoroutinefunction(f):
             raise RuntimeError("Background task %s is not async" % f.__name__)
 
+        # print("Registered scheduled task: %s" % f.__name__, file=sys.stderr)
+
         @wraps(f)
         async def inner(*args, **kwargs):
-            # NB: no context to set restore here, but should still set one up
-            return await f(*args, **kwargs)
+            with systemcontext(): 
+                async with operationalcontext(True, f, Unrestricted):
+                    await f(*args, **kwargs)
 
         _task = (broker.task(schedule=[{"cron": schedule}]))(inner)
         _scheduled.append(_task)

@@ -1,11 +1,19 @@
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from asyncpg import create_pool, Pool as BasePool
 from asyncpg.connection import Connection
 
 from unrest import context, config, getLogger
 
-_connection = ContextVar[Connection]("db_connection")
+class PoolState:
+    def __init__(self, conn: Connection, tenant: str, refcnt: int):
+        self.conn = conn
+        self.tenant = tenant
+        self.refcnt = refcnt
+
+# Holds pool connections that may have to be reconfigured for RLS
+tenant_connections = ContextVar[PoolState]("tenant_connections")
 
 log = getLogger(__name__)
 
@@ -17,25 +25,43 @@ class Pool:
 
     @asynccontextmanager
     async def acquire(self):
-        global _connection
+
+        if self.pool is None: 
+            self.pool = await create_pool(**self.args) # type: ignore
+
         # NB: we need the USER context to set the correct tenant in Postgres for RLS
-        conn = _connection.get(None)
-        if conn is None or conn._con is None:
-            if self.pool is None: 
-                self.pool = await create_pool(**self.args) # type: ignore
-            conn = await self.pool.acquire()            
-            token = _connection.set(conn)
+        tenant_id = str(context.tenant.identity)
+
+        state = tenant_connections.get(None)
+        old_tenant = None if state is None else state.tenant
+        needs_conn = state is None or state.conn is None or state.conn._con is None
+        needs_tenant = state is None or state.tenant != tenant_id
+        
+ 
+        if not needs_conn and not needs_tenant:
+            yield state.conn
+            return
+
+        state = PoolState(
+            conn=state.conn if not needs_conn else await self.pool.acquire(), 
+            tenant=state.tenant if not needs_tenant else tenant_id,
+            refcnt=state.refcnt + 1 if not needs_conn else 0,
+        )
+        token = tenant_connections.set(state) # type:ignore
+        try:
+            if needs_tenant:
+                await state.conn.execute("SET rls.tenant = '%s';" % tenant_id)  
+            yield state.conn
+        finally:    
             try:
-                await conn.execute("SET rls.tenant = '%s';" % str(context.tenant.identity))  
-                yield conn
-            finally:    
-                try:
-                    await self.pool.release(conn)
-                except Exception as e:
-                    log.warning("Error releasing connection back to pool: %s", e)
-                _connection.reset(token)
-        else:
-            yield conn
+                if old_tenant is not None and old_tenant != tenant_id:
+                    await state.conn.execute("SET rls.tenant = '%s';" % old_tenant)  
+                if state.refcnt == 0:
+                    await self.pool.release(state.conn)
+            except Exception as e:
+                log.warning("Error releasing connection back to pool: %s", e)
+            tenant_connections.reset(token)
+            
 
     @asynccontextmanager
     async def transaction(self, *args, **kwargs):

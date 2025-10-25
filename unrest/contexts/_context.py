@@ -87,14 +87,7 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
             if ctx._global is False and is_mutation:
                 raise ContextError("Cannot mutate in a query context: %s" % f.__name__)
 
-            if _root:
-                # Create a context for (root) DB connection and set tenant for RLS
-                # FIXME: user and operational context now set so this is safe here...but ugly
-                from unrest.db.pool import acquire
-                async with acquire() as conn:
-                    yield ctx
-            else:
-                yield ctx
+            yield ctx
         except Exception as e:
             # TODO: e.g. log error
             raise
@@ -104,17 +97,21 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
     except LookupError:
         raise ContextError("No context")
 
-
-
-
-
 @contextmanager
 def usercontext(user : User, tenant: Tenant | None = None, id: str | None = None):
     token = __ctx.set(Context(user=user, tenant=tenant or Tenant(), id=id or str(uuid.uuid4())))  
-    try:
+    try:        
         yield
     finally:
         __ctx.reset(token)
+
+@contextmanager
+def systemcontext(tenant: Tenant | None = None):
+    from unrest.contexts import auth
+    tenant_id = auth.NULL_IDENTITY if tenant is None else str(tenant.identity)
+    with usercontext(auth.System(tenant=tenant_id), tenant=tenant):
+        yield
+
 
 @contextmanager
 def restorecontext(context: Context):

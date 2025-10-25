@@ -66,8 +66,8 @@ class UnauthenticatedUser(User):
 
 
 class System(User):
-    def __init__(self, tenant: str) -> None:
-        super().__init__(identity=str(null_uuid), display_name="__system__", tenant=tenant)
+    def __init__(self, tenant: str | None = None) -> None:
+        super().__init__(identity=NULL_IDENTITY, display_name="__system__", tenant=tenant or NULL_IDENTITY)
 
     @property
     def is_authenticated(self) -> bool:

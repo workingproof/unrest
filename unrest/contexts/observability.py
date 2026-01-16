@@ -37,7 +37,7 @@ class Formatter(JsonFormatter):
 
 fmtstring = "%(name)s %(asctime)s %(levelname)s %(filename)s:%(lineno)s %(message)s"
 mapping = {"name": "logger", "asctime": "timestamp", "levelname": "loglevel"}
-formatter = Formatter(fmtstring, json_default=str, rename_fields=mapping, json_indent=2)  # json_indent=2
+formatter = Formatter(fmtstring, json_default=str, rename_fields=mapping)  # json_indent=2
 logHandler = logging.StreamHandler(stream=sys.stderr)
 logHandler.setLevel(loglevel)
 logHandler.setFormatter(formatter)

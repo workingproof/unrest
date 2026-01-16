@@ -98,20 +98,40 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
         raise ContextError("No context")
 
 @contextmanager
-def usercontext(user : User, tenant: Tenant | None = None, id: str | None = None):
-    token = __ctx.set(Context(user=user, tenant=tenant or Tenant(), id=id or str(uuid.uuid4())))  
-    try:        
+def usercontext(user : User, tenant: Tenant | None = None):
+    ctx = get()
+    _user = ctx.user
+    _tenant = ctx.tenant
+
+    try:
+        ctx.user = user
+        if tenant is not None:
+            ctx.tenant = tenant        
         yield
     finally:
-        __ctx.reset(token)
+        ctx.user = _user
+        ctx.tenant = _tenant
 
 @contextmanager
 def systemcontext(tenant: Tenant | None = None):
     from unrest.contexts import auth
-    tenant_id = auth.NULL_IDENTITY if tenant is None else str(tenant.identity)
+    ctx = get()
+    if tenant is None:
+        tenant_id = str((ctx.tenant.identity if ctx and ctx.tenant else None) or auth.NULL_IDENTITY)
+    else:
+        tenant_id = str(tenant.identity)
+    
+    _global = ctx._global
+    _local = ctx._local
     with usercontext(auth.System(tenant=tenant_id), tenant=tenant):
-        yield
-
+        # System context is always mutation enabled
+        try:
+            ctx._global = True
+            ctx._local = True
+            yield
+        finally:
+            ctx._global = _global
+            ctx._local = _local
 
 @contextmanager
 def restorecontext(context: Context):

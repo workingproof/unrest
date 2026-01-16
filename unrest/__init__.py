@@ -3,7 +3,7 @@
 # from unrest.http.api import Api, Payload, PayloadResponse, JSONResponse  # noqa
 # from unrest.http.app import Application, HTMLResponse  # noqa
 
-from unrest.contexts import context as context, usercontext as usercontext, query as query, mutate as mutate, auth as auth, ContextError as ContextError, config as config, Unauthorized as Unauthorized, getLogger as getLogger
+from unrest.contexts import context as context, usercontext as usercontext, systemcontext as systemcontext, query as query, mutate as mutate, auth as auth, ContextError as ContextError, config as config, Unauthorized as Unauthorized, getLogger as getLogger
 
 class ClientError(Exception):
     pass

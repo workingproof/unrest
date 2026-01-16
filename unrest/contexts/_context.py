@@ -139,14 +139,17 @@ def restorecontext(context: Context):
         __ctx.reset(token)
 
 @contextmanager
-def requestcontext(request: Request):
+def requestcontext(request: Request | None = None):
     ctx = get()
-    req = ctx._request
+    _req = ctx._request
+    _id = ctx.id
     try:
+        ctx.id = str(uuid.uuid4())
         ctx._request = request
         yield
     finally:
-        ctx._request = req
+        ctx._request = _req
+        ctx.id = _id
 
 
 def query(expr: UserPredicateFunction = Unrestricted):

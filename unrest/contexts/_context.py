@@ -117,13 +117,10 @@ def systemcontext(tenant: Tenant | None = None):
     from unrest.contexts import auth
     ctx = get()
     if tenant is None:
-        tenant_id = str((ctx.tenant.identity if ctx and ctx.tenant else None) or auth.NULL_IDENTITY)
-    else:
-        tenant_id = str(tenant.identity)
-    
+        tenant  = ctx.tenant    
     _global = ctx._global
     _local = ctx._local
-    with usercontext(auth.System(tenant=tenant_id), tenant=tenant):
+    with usercontext(auth.System(tenant=str(tenant.identity)), tenant=tenant):
         # System context is always mutation enabled
         try:
             ctx._global = True

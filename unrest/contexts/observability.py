@@ -4,23 +4,8 @@ from datetime import datetime, timezone
 
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
-loglevel = logging.WARNING
-
-def getLogger(name):
-    log = logging.getLogger(name)
-    log.setLevel(loglevel)
-
-    # for name, logger in logging.Logger.manager.loggerDict.items():
-    #     # if name != '<module name>':
-    #     #     logger.disabled = True
-    #     try:
-    #         if hasattr(logger, "handlers"):
-    #             logger.handlers.clear()
-    #             logger.setLevel(loglevel)
-    #     except:  # noqa
-    #         pass
-
-    return log
+loglevel = logging.INFO
+otherlevel = logging.ERROR
 
 
 class Formatter(JsonFormatter):
@@ -44,3 +29,23 @@ logHandler.setFormatter(formatter)
 logging.root.handlers = [logHandler]
 
 logging.basicConfig(level=loglevel, handlers=[logHandler])
+
+_loggers = {}
+
+def getLogger(name):
+    log = logging.getLogger(name)
+    log.setLevel(loglevel)
+    _loggers[name] = log
+
+    for name, logger in logging.Logger.manager.loggerDict.items():
+        if name not in _loggers:
+            # logger.disabled = True
+            try:
+                if hasattr(logger, "handlers"):
+                    logger.handlers.clear()
+                    logger.addHandler(logHandler)
+                logger.setLevel(otherlevel)
+            except:  # noqa
+                pass
+
+    return log

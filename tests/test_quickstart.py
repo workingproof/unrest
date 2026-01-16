@@ -13,7 +13,9 @@ admin_headers = {"Authorization": "Bearer secretapikey123", "Accept": "applicati
 
 @fixture
 async def client():
-    cli = Client(get_instance())
+    app = get_instance()
+    #app = "http://localhost:8000"  # for real server testing
+    cli = Client(app)
     cli.headers["Authorization"] = staff_headers["Authorization"]
     yield cli
 

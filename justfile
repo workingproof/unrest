@@ -6,6 +6,10 @@ set dotenv-load := true
 _default:
 	just --list
 
+logs:
+    #!/bin/sh
+    # docker compose logs --no-log-prefix --tail=100 -f quickstart | grep '^{' | jq '.'
+    docker compose logs --no-log-prefix --tail=100 -f quickstart | jq '.'
 
 # Reset the database
 reset:
@@ -17,7 +21,7 @@ apply:
 
 # Run the test suite
 test: reset
-	poetry run pytest
+	poetry run pytest -o log_cli=true
 
 # Generate documentation
 tutorial:

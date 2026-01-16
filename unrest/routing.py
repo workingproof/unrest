@@ -1,5 +1,6 @@
 
 import inspect
+import time
 from typing import Any, Awaitable, Callable, Self, Tuple, get_args, get_origin
 
 from asyncpg import InsufficientPrivilegeError # type:ignore
@@ -91,29 +92,79 @@ class Endpoint:
         raise NotImplementedError("Response encoding not implemented")
 
     async def __call__(self, request: http.Request) -> http.Response:
+            t_start = time.perf_counter()
             try:
                 user, tenant = await self.service.authenticate(request)
                 with usercontext(user, tenant=tenant):  
                     with requestcontext(request):
-                        (args, kwargs) = await self.decode(request)
-                        response = await self.function(*args, **kwargs)
-                        return await self.encode(request, response)
+                        try:
+                            (args, kwargs) = await self.decode(request)
+                            response = await self.function(*args, **kwargs)
+                            response = await self.encode(request, response)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.info("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return response
+                        except ClientError as ex:
+                            log.error(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=400)
+                        except http.AuthenticationError:
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=401)
+                        except Unauthorized as ex:
+                            log.error(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=401)
+                        except InsufficientPrivilegeError as ex:
+                            log.warning(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.warning("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=403)
+                        except ContextError as ex:
+                            log.error(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=403)            
+                        except ServerError as ex:
+                            log.error(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=500)
+                        # except TaskTimeout:
+                        #     raise HTTPException(status_code=504)
+                        # except TaskNotReady:
+                        #     raise HTTPException(status_code=202)
+                        except Exception as ex:
+                            log.exception(ex)
+                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
+                            return http.Response(status_code=500)
+            # TODO: now we have nested I think only authentication errors can happen here?
             except ClientError as ex:
                 log.error(ex)
+                log.error("%s %s %d %.3f", request.method, request.url.path, 400, time.perf_counter() - t_start)
                 return http.Response(status_code=400)
             except http.AuthenticationError:
+                log.error("%s %s %d %.3f", request.method, request.url.path, 401, time.perf_counter() - t_start)
                 return http.Response(status_code=401)
             except Unauthorized as ex:
-                log.warning(ex)
+                log.error(ex)
+                log.error("%s %s %d %.3f", request.method, request.url.path, 401, time.perf_counter() - t_start)
                 return http.Response(status_code=401)
             except InsufficientPrivilegeError as ex:
                 log.warning(ex)
+                log.warning("%s %s %d %.3f", request.method, request.url.path, 403, time.perf_counter() - t_start)
                 return http.Response(status_code=403)
             except ContextError as ex:
                 log.error(ex)
+                log.error("%s %s %d %.3f", request.method, request.url.path, 403, time.perf_counter() - t_start)
                 return http.Response(status_code=403)            
             except ServerError as ex:
                 log.error(ex)
+                log.error("%s %s %d %.3f", request.method, request.url.path, 500, time.perf_counter() - t_start)
                 return http.Response(status_code=500)
             # except TaskTimeout:
             #     raise HTTPException(status_code=504)
@@ -121,7 +172,8 @@ class Endpoint:
             #     raise HTTPException(status_code=202)
             except Exception as ex:
                 log.exception(ex)
-                return http.Response(status_code=500)
+                log.error("%s %s %d %.3f", request.method, request.url.path, 500, time.perf_counter() - t_start)
+                return http.Response(status_code=500)               
 
 
 

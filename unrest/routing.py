@@ -106,31 +106,31 @@ class Endpoint:
                             return response
                         except ClientError as ex:
                             log.error(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 400, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=400)
                         except http.AuthenticationError:
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 401, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=401)
                         except Unauthorized as ex:
                             log.error(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 401, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=401)
                         except InsufficientPrivilegeError as ex:
                             log.warning(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 403, "time": time.perf_counter() - t_start}
                             log.warning("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=403)
                         except ContextError as ex:
                             log.error(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 403, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=403)            
                         except ServerError as ex:
                             log.error(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 500, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=500)
                         # except TaskTimeout:
@@ -139,7 +139,7 @@ class Endpoint:
                         #     raise HTTPException(status_code=202)
                         except Exception as ex:
                             log.exception(ex)
-                            payload = {"method": request.method, "path": request.url.path, "status": response.status_code, "time": time.perf_counter() - t_start}
+                            payload = {"method": request.method, "path": request.url.path, "status": 500, "time": time.perf_counter() - t_start}
                             log.error("%(method)s %(path)s %(status)d %(time).3f" % payload, extra={"request": payload})
                             return http.Response(status_code=500)
             # TODO: now we have nested I think only authentication errors can happen here?

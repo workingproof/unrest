@@ -76,6 +76,7 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
         _root   = ctx._global is None
         _local  = ctx._local
         _global = ctx._global
+        _entry = ctx._entrypoint
         if _root:
             ctx._global = is_mutation
             ctx._entrypoint = f.__module__ + "." + f.__name__        
@@ -93,7 +94,8 @@ async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicate
             raise
         finally:
             ctx._local = _local
-            ctx._global = _global          
+            ctx._global = _global  
+            ctx._entrypoint = _entry        
     except LookupError:
         raise ContextError("No context")
 
@@ -194,7 +196,8 @@ class ContextWrapper:
 
     @property
     def request(self):
-        return self._ctx.request
+        # We should never need to use this but provided as a fallback
+        return self._ctx._request
 
     # @contextmanager
     # def unsafe(self):

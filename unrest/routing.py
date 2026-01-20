@@ -11,7 +11,7 @@ from unrest.contexts import Unauthorized, usercontext, requestcontext
 from unrest.contexts import getLogger, auth
 
 from unrest import Payload, ContextError, ClientError, ServerError, Unauthorized
-from unrest import http
+from unrest import http, context
 
 from mangum import Mangum
 
@@ -173,7 +173,21 @@ class Endpoint:
             except Exception as ex:
                 log.exception(ex)
                 log.error("%s %s %d %.3f", request.method, request.url.path, 500, time.perf_counter() - t_start)
-                return http.Response(status_code=500)               
+                return http.Response(status_code=500)
+            finally:
+                # Not strictly necessary but just to be sure
+                ctx = context._ctx
+                if ctx._global is not None or ctx._local is not None or ctx._entrypoint is not None:
+                    # raise RuntimeError("Context leak detected after request")
+                    log.error("Context leak detected: global=%s local=%s entrypoint=%s", str(ctx._global), str(ctx._local), str(ctx._entrypoint))
+                    ctx._global = None
+                    ctx._local = None
+                    ctx._entrypoint = None
+                if not isinstance(ctx.user, UnauthenticatedUser):
+                    # raise RuntimeError("User context leak detected after request")
+                    log.error("User context leak detected: user=%s", str(ctx.user))
+                    ctx.user = UnauthenticatedUser()
+                    ctx.tenant = Tenant()          
 
 
 

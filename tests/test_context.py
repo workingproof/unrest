@@ -110,4 +110,8 @@ async def test_escalation():
                 with usercontext(some_user):
                     result = await some_query(val)
                     assert result == expected
-
+    
+    ctx = context._ctx
+    assert ctx._global is None
+    assert ctx._local is None
+    assert ctx._entrypoint is None

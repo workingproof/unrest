@@ -64,10 +64,14 @@ class Context:
 
 
 
-__ctx: ContextVar[Context] = ContextVar("context", default=Context())
+__ctx: ContextVar[Context] = ContextVar("context")
 
 def get() -> Context:
-    return __ctx.get()
+    ctx =  __ctx.get(None)
+    if ctx is None:
+        ctx = Context()
+        __ctx.set(ctx)
+    return ctx
 
 @asynccontextmanager
 async def operationalcontext(is_mutation: bool, f: Callable, expr: UserPredicateFunction):

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "unrest"
-version = "0.2.7"
+version = "0.2.8"
 description = "Lean and mean web framework for Python / Postgres"
 authors = ["Working Proof <hello@workingproof.co>"]
 readme = "README.md"
